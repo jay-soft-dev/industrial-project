@@ -256,10 +256,20 @@ let draftBeforePhoto = null;
 let draftAfterPhoto = null;
 let lastRawOcrText = "";
 
+const toggleMenuBtn = document.getElementById("toggle-menu-btn");
+const appMenuBar = document.getElementById("app-menu-bar");
+const headerActiveDatePill = document.getElementById("header-active-date-pill");
+
 const dateInput = document.getElementById("selected-date");
 const monthSelect = document.getElementById("calendar-month-select");
 const yearSelect = document.getElementById("calendar-year-select");
 const addPanel = document.getElementById("add-tool-panel");
+
+const headerMonthSearchInput = document.getElementById("header-month-search");
+const clearMonthSearchBtn = document.getElementById("clear-month-search-btn");
+
+const headerDateSearchInput = document.getElementById("header-date-search");
+const clearDateSearchBtn = document.getElementById("clear-date-search-btn");
 
 const headerMoldSearchInput = document.getElementById("header-mold-search");
 const clearMoldSearchBtn = document.getElementById("clear-mold-search-btn");
@@ -267,6 +277,16 @@ const moldSearchResultsEl = document.getElementById("mold-search-results");
 const activeSearchBanner = document.getElementById("active-search-banner");
 const activeSearchText = document.getElementById("active-search-text");
 const searchMatchesInlineList = document.getElementById("search-matches-inline-list");
+
+if (toggleMenuBtn && appMenuBar) {
+    toggleMenuBtn.addEventListener("click", () => {
+        const isHidden = appMenuBar.classList.toggle("hidden");
+        toggleMenuBtn.setAttribute("aria-expanded", String(!isHidden));
+        if (!isHidden && headerMonthSearchInput) {
+            setTimeout(() => headerMonthSearchInput.focus(), 50);
+        }
+    });
+}
 
 function populateYearOptions(centerYear) {
     if (!yearSelect) return;
@@ -284,11 +304,106 @@ function populateYearOptions(centerYear) {
 
 populateYearOptions(initY);
 if (dateInput) dateInput.value = activeDate;
+if (headerDateSearchInput) headerDateSearchInput.value = activeDate;
 if (monthSelect) monthSelect.value = String(calMonth);
 
-// =========================================================
-// All-Months Mold Search (Header Connected to All 12 Months)
-// =========================================================
+function parseMonthSearchQuery(raw, currentYear) {
+    const q = raw.trim().toLowerCase();
+    if (!q) return null;
+
+    const ymMatch = q.match(/^(\d{4})[-\/](\d{1,2})$/);
+    if (ymMatch) {
+        const yr = Number(ymMatch[1]);
+        const mo = Number(ymMatch[2]) - 1;
+        if (mo >= 0 && mo <= 11) return { year: yr, monthIndex: mo };
+    }
+
+    for (let i = 0; i < 12; i++) {
+        const full = MONTH_NAMES[i].toLowerCase();
+        const shortName = MONTH_SHORT[i].toLowerCase();
+        if (full.startsWith(q) || shortName.startsWith(q)) {
+            return { year: currentYear, monthIndex: i };
+        }
+    }
+
+    if (/^(1[0-2]|0?[1-9])$/.test(q)) {
+        const mo = Number(q) - 1;
+        return { year: currentYear, monthIndex: mo };
+    }
+
+    return null;
+}
+
+if (headerMonthSearchInput) {
+    headerMonthSearchInput.addEventListener("input", (e) => {
+        const val = e.target.value;
+        if (clearMonthSearchBtn) {
+            clearMonthSearchBtn.classList.toggle("hidden", val.trim().length === 0);
+        }
+        const parsed = parseMonthSearchQuery(val, calYear);
+        if (parsed) {
+            setCalendarMonth(parsed.year, parsed.monthIndex, true);
+        }
+    });
+}
+
+if (clearMonthSearchBtn) {
+    clearMonthSearchBtn.addEventListener("click", () => {
+        if (headerMonthSearchInput) headerMonthSearchInput.value = "";
+        clearMonthSearchBtn.classList.add("hidden");
+        const [y, m] = todayISO.split("-").map(Number);
+        setCalendarMonth(y, m - 1, false);
+    });
+}
+
+function parseDateSearchText(raw) {
+    const s = raw.trim();
+    if (!s) return null;
+
+    const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (isoMatch) {
+        const y = Number(isoMatch[1]);
+        const m = String(Number(isoMatch[2])).padStart(2, "0");
+        const d = String(Number(isoMatch[3])).padStart(2, "0");
+        if (Number(m) >= 1 && Number(m) <= 12 && Number(d) >= 1 && Number(d) <= 31) {
+            return `${y}-${m}-${d}`;
+        }
+    }
+
+    const dmyMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (dmyMatch) {
+        const d = String(Number(dmyMatch[1])).padStart(2, "0");
+        const m = String(Number(dmyMatch[2])).padStart(2, "0");
+        const y = Number(dmyMatch[3]);
+        if (Number(m) >= 1 && Number(m) <= 12 && Number(d) >= 1 && Number(d) <= 31) {
+            return `${y}-${m}-${d}`;
+        }
+    }
+
+    return null;
+}
+
+if (headerDateSearchInput) {
+    headerDateSearchInput.addEventListener("input", (e) => {
+        const val = e.target.value;
+        if (clearDateSearchBtn) {
+            clearDateSearchBtn.classList.toggle("hidden", val.trim().length === 0);
+        }
+        const parsedISO = parseDateSearchText(val);
+        if (parsedISO) {
+            selectCalendarDate(parsedISO, false);
+        }
+    });
+}
+
+if (clearDateSearchBtn) {
+    clearDateSearchBtn.addEventListener("click", () => {
+        if (headerDateSearchInput) headerDateSearchInput.value = "";
+        clearDateSearchBtn.classList.add("hidden");
+        selectCalendarDate(todayISO);
+    });
+}
+
 function getMatchingMoldsAcrossAllMonths(query) {
     const q = query.trim().toLowerCase();
     if (!q) return [];
@@ -572,6 +687,7 @@ function setCalendarMonth(year, monthIndex, selectFirstDayIfOutside = false) {
     if (selectFirstDayIfOutside && !activeDate.startsWith(ymPrefix)) {
         activeDate = `${ymPrefix}-01`;
         if (dateInput) dateInput.value = activeDate;
+        if (headerDateSearchInput) headerDateSearchInput.value = activeDate;
     }
 
     renderAll();
@@ -600,6 +716,7 @@ if (yearSelect) {
 document.getElementById("jump-today-btn").addEventListener("click", () => {
     activeDate = todayISO;
     if (dateInput) dateInput.value = activeDate;
+    if (headerDateSearchInput) headerDateSearchInput.value = activeDate;
     const [y, m] = todayISO.split("-").map(Number);
     setCalendarMonth(y, m - 1, false);
 });
@@ -844,6 +961,7 @@ document.getElementById("import-replace-btn").addEventListener("click", async ()
 
     activeDate = parsed[0].dateStr;
     if (dateInput) dateInput.value = activeDate;
+    if (headerDateSearchInput) headerDateSearchInput.value = activeDate;
     const [y, m] = activeDate.split("-").map(Number);
     setCalendarMonth(y, m - 1, false);
 
@@ -976,9 +1094,12 @@ function getStatusBadge(status) {
     return `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30">Scheduled</span>`;
 }
 
-function selectCalendarDate(dateStr) {
+function selectCalendarDate(dateStr, syncTextInput = true) {
     activeDate = dateStr;
     if (dateInput) dateInput.value = dateStr;
+    if (syncTextInput && headerDateSearchInput) {
+        headerDateSearchInput.value = dateStr;
+    }
     const [y, m] = dateStr.split("-").map(Number);
     calYear = y;
     calMonth = m - 1;
@@ -1146,6 +1267,10 @@ function renderClickedDateStatusBanner(selectedDayTools) {
 }
 
 function renderAll() {
+    if (headerActiveDatePill) {
+        headerActiveDatePill.textContent = activeDate;
+    }
+
     renderCalendarGrid();
 
     const q = moldSearchQuery.trim();
@@ -1307,9 +1432,14 @@ function renderAll() {
             .join("");
     }
 
+    const menuLogCount = document.getElementById("menu-log-count");
+    if (menuLogCount) {
+        menuLogCount.textContent = `${allLogs.length} ${allLogs.length === 1 ? "entry" : "entries"}`;
+    }
+
     const logList = document.getElementById("audit-log-list");
     if (allLogs.length === 0) {
-        logList.innerHTML = `<div class="text-stone-500 text-xs">No swap or completion events yet.</div>`;
+        logList.innerHTML = `<div class="col-span-full text-stone-500 text-xs">No swap or completion events yet.</div>`;
     } else {
         logList.innerHTML = allLogs
             .map(

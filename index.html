@@ -25,9 +25,9 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body class="bg-[#0b0d11] text-stone-100 min-h-screen antialiased selection:bg-amber-400 selection:text-stone-950">
-    <!-- Top Bar with All-Months Mold Search & Date Search -->
+    <!-- Compact Top Bar + Toggleable Menu Bar -->
     <header class="sticky top-0 z-30 border-b border-stone-800/80 bg-[#0b0d11]/95 backdrop-blur-md">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
             <div class="flex items-center gap-3">
                 <div class="w-9 h-9 rounded-lg bg-amber-400 text-stone-950 font-mono font-bold flex items-center justify-center text-sm shadow-sm">
                     PM
@@ -35,83 +35,178 @@
                 <div>
                     <div class="flex items-center gap-2">
                         <h1 class="text-lg font-bold tracking-tight">ToolSync PM</h1>
-                        <span class="text-[11px] font-mono uppercase px-2 py-0.5 rounded bg-stone-800 text-amber-300 border border-stone-700">
-                            All Months Sync
+                        <span id="header-active-date-pill" class="text-[11px] font-mono px-2 py-0.5 rounded bg-stone-800 text-amber-300 border border-stone-700">
+                            --
                         </span>
                     </div>
                 </div>
             </div>
 
-            <!-- Header Mold Search (All 12 Months) + Date Search (All 12 Months) -->
-            <div class="flex flex-wrap items-center gap-2">
-                <div class="relative flex items-center bg-[#181d28] border border-amber-400/60 focus-within:border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-mono">
-                    <label for="header-mold-search" class="text-amber-300 mr-1.5 font-bold cursor-pointer">
-                        MOLD SEARCH
-                    </label>
-                    <input
-                        id="header-mold-search"
-                        type="text"
-                        autocomplete="off"
-                        placeholder="Type ID, Mold, IMM (All 12 Months)..."
-                        class="w-48 sm:w-60 bg-transparent text-white placeholder-stone-400 focus:outline-none"
-                    />
-                    <button
-                        id="clear-mold-search-btn"
-                        type="button"
-                        title="Clear mold search"
-                        class="hidden ml-1 px-1.5 py-0.5 rounded bg-stone-800 text-amber-300 hover:text-white"
-                    >
-                        &times;
-                    </button>
+            <!-- Menu Toggle Button -->
+            <div class="flex items-center gap-2">
+                <button
+                    id="toggle-menu-btn"
+                    type="button"
+                    aria-expanded="false"
+                    class="px-3.5 py-2 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-amber-400/50 text-amber-300 font-mono text-xs font-bold flex items-center gap-2 transition"
+                >
+                    <span>&#9776;</span>
+                    <span>Menu</span>
+                </button>
+            </div>
+        </div>
 
-                    <!-- Live Dropdown Results -->
-                    <div
-                        id="mold-search-results"
-                        class="hidden fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-1.5 z-50 w-auto sm:w-[440px] max-h-80 overflow-y-auto rounded-xl bg-[#11151d] border border-amber-400/60 shadow-2xl divide-y divide-stone-800/80"
-                    ></div>
+        <!-- Collapsible Menu Bar Housing Searches, Actions, Backup & Swap Log -->
+        <div
+            id="app-menu-bar"
+            class="hidden border-t border-stone-800/90 bg-[#10141c] shadow-2xl max-h-[82vh] overflow-y-auto"
+        >
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 space-y-4">
+                <!-- Search Row: Month Search + Date Search + Mold Search -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <!-- 1. Separate Month Search Bar -->
+                    <div class="flex items-center bg-[#181d28] border border-emerald-400/50 focus-within:border-emerald-300 rounded-lg px-3 py-2 text-xs font-mono">
+                        <label for="header-month-search" class="text-emerald-300 mr-2 font-bold cursor-pointer shrink-0">
+                            MONTH
+                        </label>
+                        <input
+                            id="header-month-search"
+                            type="text"
+                            autocomplete="off"
+                            placeholder="e.g. Nov, November, 2026-11..."
+                            class="w-full bg-transparent text-white placeholder-stone-400 focus:outline-none"
+                        />
+                        <button
+                            id="clear-month-search-btn"
+                            type="button"
+                            title="Clear month search"
+                            class="hidden ml-1.5 px-1.5 py-0.5 rounded bg-stone-800 text-emerald-300 hover:text-white"
+                        >
+                            &times;
+                        </button>
+                    </div>
+
+                    <!-- 2. Separate Date Search Bar -->
+                    <div class="flex items-center bg-[#181d28] border border-sky-400/50 focus-within:border-sky-300 rounded-lg px-3 py-2 text-xs font-mono gap-1.5">
+                        <label for="header-date-search" class="text-sky-300 font-bold cursor-pointer shrink-0">
+                            DATE
+                        </label>
+                        <input
+                            id="header-date-search"
+                            type="text"
+                            autocomplete="off"
+                            placeholder="YYYY-MM-DD or DD/MM/YYYY"
+                            class="w-full min-w-0 bg-transparent text-amber-300 placeholder-stone-400 focus:outline-none"
+                        />
+                        <input
+                            id="selected-date"
+                            type="date"
+                            aria-label="Pick calendar date"
+                            class="bg-[#0b0d11] border border-stone-700 rounded px-1.5 py-0.5 text-[11px] text-amber-300 focus:outline-none cursor-pointer shrink-0"
+                        />
+                        <button
+                            id="clear-date-search-btn"
+                            type="button"
+                            title="Clear date search"
+                            class="hidden px-1.5 py-0.5 rounded bg-stone-800 text-sky-300 hover:text-white shrink-0"
+                        >
+                            &times;
+                        </button>
+                    </div>
+
+                    <!-- 3. Mold Search Bar Across All 12 Months -->
+                    <div class="relative flex items-center bg-[#181d28] border border-amber-400/60 focus-within:border-amber-300 rounded-lg px-3 py-2 text-xs font-mono">
+                        <label for="header-mold-search" class="text-amber-300 mr-2 font-bold cursor-pointer shrink-0">
+                            MOLD
+                        </label>
+                        <input
+                            id="header-mold-search"
+                            type="text"
+                            autocomplete="off"
+                            placeholder="Search ID, mold, machine (all months)..."
+                            class="w-full bg-transparent text-white placeholder-stone-400 focus:outline-none"
+                        />
+                        <button
+                            id="clear-mold-search-btn"
+                            type="button"
+                            title="Clear mold search"
+                            class="hidden ml-1.5 px-1.5 py-0.5 rounded bg-stone-800 text-amber-300 hover:text-white"
+                        >
+                            &times;
+                        </button>
+
+                        <!-- Live Dropdown Results -->
+                        <div
+                            id="mold-search-results"
+                            class="hidden fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-1.5 z-50 w-auto sm:w-[440px] max-h-80 overflow-y-auto rounded-xl bg-[#11151d] border border-amber-400/60 shadow-2xl divide-y divide-stone-800/80"
+                        ></div>
+                    </div>
                 </div>
 
-                <label
-                    title="Search or jump to any date across all 12 months"
-                    class="flex items-center gap-1.5 bg-[#181d28] border border-sky-400/50 focus-within:border-sky-300 rounded-lg px-2.5 py-1.5 text-xs font-mono"
-                >
-                    <span class="text-sky-300 font-bold">DATE SEARCH</span>
-                    <input
-                        id="selected-date"
-                        type="date"
-                        class="bg-transparent text-amber-300 font-semibold focus:outline-none cursor-pointer"
-                    />
-                </label>
+                <!-- Actions & Backup Row Inside Menu Bar -->
+                <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-800/80 text-xs font-mono">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button
+                            id="jump-today-btn"
+                            type="button"
+                            class="px-3 py-1.5 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-stone-700 transition"
+                        >
+                            Today
+                        </button>
+                        <button
+                            id="open-ocr-modal-btn"
+                            type="button"
+                            class="px-3 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 font-semibold transition"
+                        >
+                            Scan Plan
+                        </button>
+                        <button
+                            id="open-add-tool-btn"
+                            type="button"
+                            class="px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold transition"
+                        >
+                            + Add PM
+                        </button>
+                    </div>
 
-                <button
-                    id="jump-today-btn"
-                    type="button"
-                    class="px-2.5 py-1.5 rounded-lg text-xs font-mono bg-[#141820] hover:bg-stone-800 border border-stone-700/80 transition"
-                >
-                    Today
-                </button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button
+                            id="export-json-btn"
+                            type="button"
+                            class="px-3 py-1.5 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-stone-700 transition"
+                        >
+                            Export Backup
+                        </button>
+                        <label class="px-3 py-1.5 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-stone-700 cursor-pointer transition">
+                            Import Backup
+                            <input id="import-json-input" type="file" accept="application/json" class="hidden" />
+                        </label>
+                        <button
+                            id="export-csv-btn"
+                            type="button"
+                            class="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-semibold transition"
+                        >
+                            Download CSV
+                        </button>
+                    </div>
+                </div>
 
-                <button
-                    id="open-ocr-modal-btn"
-                    type="button"
-                    class="px-2.5 py-1.5 rounded-lg text-xs font-mono bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 font-semibold transition"
-                >
-                    Scan Plan
-                </button>
-
-                <button
-                    id="open-add-tool-btn"
-                    type="button"
-                    class="px-3 py-1.5 rounded-lg text-xs font-mono font-semibold bg-amber-400 hover:bg-amber-300 text-stone-950 transition"
-                >
-                    + Add PM
-                </button>
+                <!-- Swap & Activity Log Section Inside Menu Bar -->
+                <div class="pt-3 border-t border-stone-800/90 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-bold text-xs font-mono uppercase tracking-wide text-amber-300">
+                            Swap &amp; Activity Log
+                        </h3>
+                        <span id="menu-log-count" class="text-[11px] font-mono text-stone-400">0 entries</span>
+                    </div>
+                    <div id="audit-log-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1 text-xs font-mono"></div>
+                </div>
             </div>
         </div>
     </header>
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        <!-- Active All-Months Mold Search Results Card (Always visible on page when searching) -->
+        <!-- Active All-Months Mold Search Results Card -->
         <section
             id="active-search-banner"
             class="hidden rounded-2xl border border-amber-400/50 bg-[#141822] p-4 space-y-3"
@@ -308,79 +403,40 @@
             <div id="daily-cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </section>
 
-        <!-- Full Schedule & Audit Log -->
-        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Master Schedule Table -->
-            <div class="lg:col-span-2 rounded-2xl bg-[#11151d] border border-stone-800/90 overflow-hidden">
-                <div class="px-5 py-4 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
-                    <h3 id="pm-schedule-heading" class="font-bold text-base">PM Schedule</h3>
-                    <div class="flex items-center gap-2 text-xs font-mono">
-                        <button
-                            id="filter-month-btn"
-                            type="button"
-                            class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300"
-                        >
-                            This Month
-                        </button>
-                        <button
-                            id="filter-all-btn"
-                            type="button"
-                            class="px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400"
-                        >
-                            All Months
-                        </button>
-                    </div>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse text-sm">
-                        <thead>
-                            <tr class="border-b border-stone-800/80 text-[11px] font-mono uppercase text-stone-400 bg-[#0d1017]">
-                                <th class="py-3 px-4">Date</th>
-                                <th class="py-3 px-4">Tool ID</th>
-                                <th class="py-3 px-4">Mold &amp; Machine</th>
-                                <th class="py-3 px-4">Status</th>
-                                <th class="py-3 px-4">Edit &amp; Delete</th>
-                            </tr>
-                        </thead>
-                        <tbody id="schedule-table-body" class="divide-y divide-stone-800/60"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Reschedule & Activity Log -->
-            <div class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-5 flex flex-col justify-between space-y-4">
-                <div class="space-y-3">
-                    <div class="flex items-center justify-between">
-                        <h3 class="font-bold text-base">Swap &amp; Activity Log</h3>
-                        <span class="text-[11px] font-mono text-stone-400">Audit Trail</span>
-                    </div>
-                    <div id="audit-log-list" class="space-y-2.5 max-h-[360px] overflow-y-auto pr-1 text-xs font-mono"></div>
-                </div>
-
-                <!-- Backup & Export -->
-                <div class="pt-4 border-t border-stone-800 space-y-2">
-                    <div class="text-[11px] font-mono uppercase text-stone-400">Backup &amp; Reports</div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <button
-                            id="export-json-btn"
-                            type="button"
-                            class="px-3 py-2 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono transition"
-                        >
-                            Export Backup
-                        </button>
-                        <label class="px-3 py-2 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono text-center cursor-pointer transition">
-                            Import Backup
-                            <input id="import-json-input" type="file" accept="application/json" class="hidden" />
-                        </label>
-                    </div>
+        <!-- Full Schedule Table -->
+        <section class="rounded-2xl bg-[#11151d] border border-stone-800/90 overflow-hidden">
+            <div class="px-5 py-4 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
+                <h3 id="pm-schedule-heading" class="font-bold text-base">PM Schedule</h3>
+                <div class="flex items-center gap-2 text-xs font-mono">
                     <button
-                        id="export-csv-btn"
+                        id="filter-month-btn"
                         type="button"
-                        class="w-full px-3 py-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-mono font-semibold transition"
+                        class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300"
                     >
-                        Download PM Report (CSV)
+                        This Month
+                    </button>
+                    <button
+                        id="filter-all-btn"
+                        type="button"
+                        class="px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400"
+                    >
+                        All Months
                     </button>
                 </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="border-b border-stone-800/80 text-[11px] font-mono uppercase text-stone-400 bg-[#0d1017]">
+                            <th class="py-3 px-4">Date</th>
+                            <th class="py-3 px-4">Tool ID</th>
+                            <th class="py-3 px-4">Mold &amp; Machine</th>
+                            <th class="py-3 px-4">Status</th>
+                            <th class="py-3 px-4">Edit &amp; Delete</th>
+                        </tr>
+                    </thead>
+                    <tbody id="schedule-table-body" class="divide-y divide-stone-800/60"></tbody>
+                </table>
             </div>
         </section>
     </main>
