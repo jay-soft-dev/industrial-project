@@ -56,7 +56,7 @@
             </div>
         </div>
 
-        <!-- Collapsible Menu Bar Housing Searches, Actions, Backup & Swap Log -->
+        <!-- Collapsible Menu Bar Housing Searches, Actions & Backup -->
         <div
             id="app-menu-bar"
             class="hidden border-t border-stone-800/90 bg-[#10141c] shadow-2xl max-h-[82vh] overflow-y-auto"
@@ -189,17 +189,6 @@
                             Download CSV
                         </button>
                     </div>
-                </div>
-
-                <!-- Swap & Activity Log Section Inside Menu Bar -->
-                <div class="pt-3 border-t border-stone-800/90 space-y-2.5">
-                    <div class="flex items-center justify-between">
-                        <h3 class="font-bold text-xs font-mono uppercase tracking-wide text-amber-300">
-                            Swap &amp; Activity Log
-                        </h3>
-                        <span id="menu-log-count" class="text-[11px] font-mono text-stone-400">0 entries</span>
-                    </div>
-                    <div id="audit-log-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1 text-xs font-mono"></div>
                 </div>
             </div>
         </div>
@@ -428,11 +417,12 @@
                 <table class="w-full text-left border-collapse text-sm">
                     <thead>
                         <tr class="border-b border-stone-800/80 text-[11px] font-mono uppercase text-stone-400 bg-[#0d1017]">
-                            <th class="py-3 px-4">Date</th>
-                            <th class="py-3 px-4">Tool ID</th>
-                            <th class="py-3 px-4">Mold &amp; Machine</th>
-                            <th class="py-3 px-4">Status</th>
-                            <th class="py-3 px-4">Edit &amp; Delete</th>
+                            <th class="py-3 px-4">DATE</th>
+                            <th class="py-3 px-4">TOOL ID</th>
+                            <th class="py-3 px-4">MOLD &amp; MACHINE</th>
+                            <th class="py-3 px-4">ACTUAL PM MOLD (SELF)</th>
+                            <th class="py-3 px-4">STATUS</th>
+                            <th class="py-3 px-4">EDIT &amp; DELETE</th>
                         </tr>
                     </thead>
                     <tbody id="schedule-table-body" class="divide-y divide-stone-800/60"></tbody>
@@ -457,7 +447,7 @@
             <form id="edit-tool-form" class="space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs font-mono text-stone-400 mb-1">Tool ID</label>
+                        <label class="block text-xs font-mono text-stone-400 mb-1">Tool ID (Planned)</label>
                         <input
                             id="edit-tool-code"
                             type="text"
@@ -476,14 +466,25 @@
                     </div>
                 </div>
 
-                <div>
-                    <label class="block text-xs font-mono text-stone-400 mb-1">Mold Name</label>
-                    <input
-                        id="edit-mold-name"
-                        type="text"
-                        required
-                        class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm focus:border-amber-400 focus:outline-none"
-                    />
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-mono text-stone-400 mb-1">Mold Name (Planned)</label>
+                        <input
+                            id="edit-mold-name"
+                            type="text"
+                            required
+                            class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm focus:border-amber-400 focus:outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-mono text-emerald-300 mb-1">Actual PM Mold Done (Self)</label>
+                        <input
+                            id="edit-actual-mold"
+                            type="text"
+                            placeholder="If plan mold N/A, enter mold done..."
+                            class="w-full bg-[#0b0d11] border border-emerald-500/40 rounded-lg px-3 py-2 text-sm font-mono text-emerald-200 placeholder-stone-500 focus:border-emerald-400 focus:outline-none"
+                        />
+                    </div>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

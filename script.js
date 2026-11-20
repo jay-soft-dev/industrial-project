@@ -4,27 +4,27 @@
 const DB_NAME = "ToolSyncPMDB";
 const DB_VERSION = 3;
 const STORE_TOOLS = "pmTools";
-const STORE_LOGS = "auditLogs";
 const LS_BACKUP_KEY = "ToolSyncPM_Persistent_State_v2";
 const CLEAN_SLATE_FLAG = "ToolSyncPM_CleanStart_Done_v1";
 
-function writeLocalStorageMirror(tools, logs) {
+function writeLocalStorageMirror(tools) {
     try {
         const slimTools = tools.map((t) => ({
             ...t,
+            actualMold: t.actualMold || "",
             beforePhoto: t.beforePhoto || null,
             afterPhoto: t.afterPhoto || null
         }));
         const payload = JSON.stringify({
             savedAt: Date.now(),
-            tools: slimTools,
-            logs: logs.slice(0, 120)
+            tools: slimTools
         });
         localStorage.setItem(LS_BACKUP_KEY, payload);
     } catch {
         try {
             const textOnlyTools = tools.map(({ beforePhoto, afterPhoto, ...rest }) => ({
                 ...rest,
+                actualMold: rest.actualMold || "",
                 beforePhoto: beforePhoto ? "__IDB_PHOTO__" : null,
                 afterPhoto: afterPhoto ? "__IDB_PHOTO__" : null
             }));
@@ -32,8 +32,7 @@ function writeLocalStorageMirror(tools, logs) {
                 LS_BACKUP_KEY,
                 JSON.stringify({
                     savedAt: Date.now(),
-                    tools: textOnlyTools,
-                    logs: logs.slice(0, 120)
+                    tools: textOnlyTools
                 })
             );
         } catch {
@@ -49,8 +48,7 @@ function readLocalStorageMirror() {
         const parsed = JSON.parse(raw);
         if (!parsed || !Array.isArray(parsed.tools)) return null;
         return {
-            tools: parsed.tools,
-            logs: Array.isArray(parsed.logs) ? parsed.logs : []
+            tools: parsed.tools
         };
     } catch {
         return null;
@@ -70,9 +68,6 @@ function openDB() {
                 const toolStore = db.createObjectStore(STORE_TOOLS, { keyPath: "id" });
                 toolStore.createIndex("scheduledDate", "scheduledDate", { unique: false });
             }
-            if (!db.objectStoreNames.contains(STORE_LOGS)) {
-                db.createObjectStore(STORE_LOGS, { keyPath: "id" });
-            }
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
@@ -91,7 +86,7 @@ async function getAllFromStore(storeName) {
     } catch {
         const mirror = readLocalStorageMirror();
         if (!mirror) return [];
-        return storeName === STORE_TOOLS ? mirror.tools : mirror.logs;
+        return mirror.tools;
     }
 }
 
@@ -142,7 +137,6 @@ async function runOneTimeCleanSlate() {
         if (localStorage.getItem(CLEAN_SLATE_FLAG) === "true") return;
 
         await clearStore(STORE_TOOLS);
-        await clearStore(STORE_LOGS);
 
         try {
             localStorage.removeItem(LS_BACKUP_KEY);
@@ -200,6 +194,14 @@ function getYearMonthPrefix(year, monthIndex) {
     return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
 }
 
+function escapeHtmlAttr(str) {
+    return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
 const toastEl = document.getElementById("toast");
 let toastTimer = null;
 function showToast(msg) {
@@ -241,7 +243,6 @@ function compressImageFile(file, maxWidth = 900, quality = 0.72) {
 // =========================================================
 const todayISO = formatDateISO(new Date());
 let allTools = [];
-let allLogs = [];
 let activeDate = todayISO;
 let tableShowAllDates = false;
 let moldSearchQuery = "";
@@ -409,7 +410,7 @@ function getMatchingMoldsAcrossAllMonths(query) {
     if (!q) return [];
     return allTools
         .filter((t) => {
-            const hay = `${t.toolCode || ""} ${t.moldName || ""} ${t.machineNo || ""} ${t.scheduledDate || ""} ${t.status || ""} ${t.remarks || ""}`.toLowerCase();
+            const hay = `${t.toolCode || ""} ${t.moldName || ""} ${t.actualMold || ""} ${t.machineNo || ""} ${t.scheduledDate || ""} ${t.status || ""} ${t.remarks || ""}`.toLowerCase();
             return hay.includes(q);
         })
         .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
@@ -468,6 +469,7 @@ function renderHeaderMoldSearchDropdown() {
                                 <span class="text-stone-400 text-[11px]">${t.scheduledDate}</span>
                             </div>
                             <div class="text-xs text-stone-100 truncate mt-0.5">${t.moldName} • <span class="font-mono text-stone-400">${t.machineNo}</span></div>
+                            ${t.actualMold ? `<div class="text-[11px] font-mono text-emerald-300 truncate mt-0.5">Actual (Self): ${t.actualMold}</div>` : ""}
                         </div>
                         <span class="text-[11px] font-mono text-amber-300 shrink-0">Go &rarr;</span>
                     </button>
@@ -521,15 +523,26 @@ document.addEventListener("click", (e) => {
     }
 });
 
-async function addAuditLog(message) {
-    const entry = {
-        id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        timestamp: new Date().toLocaleString(),
-        message
-    };
-    await putToStore(STORE_LOGS, entry);
-    allLogs.unshift(entry);
-    writeLocalStorageMirror(allTools, allLogs);
+// Self Actual Mold Save Handler directly from Table Row
+async function saveActualMoldSelf(toolId, value) {
+    const tool = allTools.find((t) => t.id === toolId);
+    if (!tool) return;
+    const cleaned = String(value || "").trim();
+    const prev = String(tool.actualMold || "").trim();
+    if (cleaned === prev) return;
+
+    tool.actualMold = cleaned;
+    await putToStore(STORE_TOOLS, tool);
+    writeLocalStorageMirror(allTools);
+
+    if (cleaned) {
+        showToast(`Saved actual mold: ${cleaned}`);
+    } else {
+        showToast("Actual mold cleared");
+    }
+
+    renderCalendarGrid();
+    renderClickedDateStatusBanner(allTools.filter((t) => t.scheduledDate === activeDate));
 }
 
 async function deleteToolRecord(toolId, skipConfirm = false) {
@@ -545,12 +558,11 @@ async function deleteToolRecord(toolId, skipConfirm = false) {
 
     allTools = allTools.filter((t) => t.id !== toolId);
     await deleteByIdFromStore(STORE_TOOLS, toolId);
-    writeLocalStorageMirror(allTools, allLogs);
+    writeLocalStorageMirror(allTools);
 
     if (activeModalToolId === toolId) closePhotoModal();
     if (activeEditToolId === toolId) closeEditModal();
 
-    await addAuditLog(`DELETED: ${target.toolCode} (${target.moldName}) removed from ${target.scheduledDate}.`);
     await refreshAll();
     showToast(`Deleted ${target.toolCode}`);
     return true;
@@ -561,6 +573,7 @@ const editModalHeading = document.getElementById("edit-modal-heading");
 const editToolForm = document.getElementById("edit-tool-form");
 const editToolCodeInput = document.getElementById("edit-tool-code");
 const editMoldNameInput = document.getElementById("edit-mold-name");
+const editActualMoldInput = document.getElementById("edit-actual-mold");
 const editMachineNoInput = document.getElementById("edit-machine-no");
 const editScheduledDateInput = document.getElementById("edit-scheduled-date");
 const editStatusSelect = document.getElementById("edit-status");
@@ -573,6 +586,7 @@ function openEditModal(toolId) {
     editModalHeading.textContent = `Edit ${tool.toolCode} — ${tool.moldName}`;
     editToolCodeInput.value = tool.toolCode || "";
     editMoldNameInput.value = tool.moldName || "";
+    editActualMoldInput.value = tool.actualMold || "";
     editMachineNoInput.value = tool.machineNo || "";
     editScheduledDateInput.value = tool.scheduledDate || activeDate;
     editStatusSelect.value = tool.status || "Scheduled";
@@ -605,6 +619,7 @@ editToolForm.addEventListener("submit", async (e) => {
     const prevDate = tool.scheduledDate;
     tool.toolCode = editToolCodeInput.value.trim().toUpperCase();
     tool.moldName = editMoldNameInput.value.trim();
+    tool.actualMold = editActualMoldInput.value.trim();
     tool.machineNo = editMachineNoInput.value.trim().toUpperCase();
     tool.scheduledDate = editScheduledDateInput.value || prevDate;
     tool.status = editStatusSelect.value;
@@ -614,10 +629,7 @@ editToolForm.addEventListener("submit", async (e) => {
     }
 
     await putToStore(STORE_TOOLS, tool);
-    writeLocalStorageMirror(allTools, allLogs);
-    await addAuditLog(
-        `EDITED: ${tool.toolCode} (${tool.moldName}) updated on ${tool.scheduledDate} [${tool.status}].`
-    );
+    writeLocalStorageMirror(allTools);
 
     const targetDate = tool.scheduledDate;
     closeEditModal();
@@ -651,16 +663,12 @@ async function handleMachineRunning(toolId) {
 
         await putToStore(STORE_TOOLS, replacement);
         await putToStore(STORE_TOOLS, targetTool);
-        await addAuditLog(
-            `AUTO-SWAP: ${targetTool.toolCode} running on ${currentSlotDate} -> pushed to ${targetTool.scheduledDate}; ${replacement.toolCode} pulled to ${currentSlotDate}.`
-        );
         showToast(`Swapped with ${replacement.toolCode}`);
     } else {
         targetTool.scheduledDate = pushedDate;
         targetTool.status = "Swapped / Rescheduled";
         targetTool.note = `Running on ${currentSlotDate}; pushed to ${pushedDate}`;
         await putToStore(STORE_TOOLS, targetTool);
-        await addAuditLog(`RESCHEDULED: ${targetTool.toolCode} pushed from ${currentSlotDate} to ${pushedDate}.`);
         showToast(`${targetTool.toolCode} pushed to ${pushedDate}`);
     }
 
@@ -948,6 +956,7 @@ document.getElementById("import-replace-btn").addEventListener("click", async ()
             id: `tool_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 5)}`,
             toolCode: moldCode.toUpperCase(),
             moldName: `Mold ${moldCode.toUpperCase()}`,
+            actualMold: "",
             machineNo: `IMM-${String((i % 12) + 1).padStart(2, "0")}`,
             originalDate: dateStr,
             scheduledDate: dateStr,
@@ -965,9 +974,6 @@ document.getElementById("import-replace-btn").addEventListener("click", async ()
     const [y, m] = activeDate.split("-").map(Number);
     setCalendarMonth(y, m - 1, false);
 
-    await addAuditLog(
-        `SCHEDULE BOUND TO CALENDAR: Saved ${parsed.length} molds (${Array.from(affectedMonths).join(", ")}).`
-    );
     ocrModal.classList.add("hidden");
     ocrModal.classList.remove("flex");
     await refreshAll();
@@ -1068,13 +1074,10 @@ async function saveModalChanges(markCompleted) {
     if (markCompleted) {
         tool.status = "PM Completed";
         tool.completedAt = new Date().toISOString();
-        await addAuditLog(`PM COMPLETED: ${tool.toolCode} (${tool.moldName}) on ${tool.scheduledDate}.`);
-    } else {
-        await addAuditLog(`PHOTOS SAVED: ${tool.toolCode} on ${tool.scheduledDate} updated.`);
     }
 
     await putToStore(STORE_TOOLS, tool);
-    writeLocalStorageMirror(allTools, allLogs);
+    writeLocalStorageMirror(allTools);
     closePhotoModal();
     await refreshAll();
     showToast(markCompleted ? "PM marked completed" : "Photos saved");
@@ -1195,7 +1198,7 @@ function renderCalendarGrid() {
                 <div class="space-y-1 w-full">
                     ${
                         dayTools.length > 0
-                            ? `<div class="text-[10px] font-mono text-amber-300 truncate">${dayTools.map((x) => x.toolCode).join(", ")}</div>`
+                            ? `<div class="text-[10px] font-mono text-amber-300 truncate">${dayTools.map((x) => x.actualMold ? `${x.toolCode}(${x.actualMold})` : x.toolCode).join(", ")}</div>`
                             : `<div class="text-[10px] font-mono text-stone-600">—</div>`
                     }
                     ${
@@ -1227,17 +1230,20 @@ function renderClickedDateStatusBanner(selectedDayTools) {
     const doneTools = selectedDayTools.filter((t) => t.status === "PM Completed");
     const pendingTools = selectedDayTools.filter((t) => t.status !== "PM Completed");
 
+    const formatToolLabel = (t) =>
+        t.actualMold ? `${t.toolCode} → Self: ${t.actualMold}` : `${t.toolCode} (${t.moldName})`;
+
     if (doneTools.length === selectedDayTools.length) {
         summaryEl.innerHTML = `<span class="text-emerald-400 font-bold">&#10004; PM Completed on ${activeDate}</span> — ${doneTools
-            .map((t) => `${t.toolCode} (${t.moldName})`)
+            .map(formatToolLabel)
             .join(", ")}`;
     } else if (doneTools.length > 0) {
         summaryEl.innerHTML = `<span class="text-amber-300 font-bold">Partial PM on ${activeDate}:</span> ${doneTools.length} completed (${doneTools
-            .map((t) => t.toolCode)
-            .join(", ")}), ${pendingTools.length} pending (${pendingTools.map((t) => t.toolCode).join(", ")})`;
+            .map(formatToolLabel)
+            .join(", ")}), ${pendingTools.length} pending (${pendingTools.map(formatToolLabel).join(", ")})`;
     } else {
         summaryEl.innerHTML = `<span class="text-amber-300 font-bold">Scheduled on ${activeDate}:</span> ${selectedDayTools
-            .map((t) => `${t.toolCode} [${t.status}]`)
+            .map((t) => `${formatToolLabel(t)} [${t.status}]`)
             .join(", ")}`;
     }
 
@@ -1298,6 +1304,7 @@ function renderAll() {
                                           <span class="text-stone-400 text-[11px]">${t.scheduledDate}</span>
                                       </div>
                                       <div class="text-xs text-stone-200 truncate mt-0.5">${t.moldName} (${t.machineNo})</div>
+                                      ${t.actualMold ? `<div class="text-[11px] font-mono text-emerald-300 truncate mt-0.5">Actual (Self): ${t.actualMold}</div>` : ""}
                                   </div>
                                   <span class="text-[11px] font-mono text-amber-300 shrink-0">Open &rarr;</span>
                               </button>
@@ -1361,6 +1368,7 @@ function renderAll() {
                         </div>
                         <h3 class="font-bold text-base text-white">${t.moldName}</h3>
                         <p class="text-xs font-mono text-stone-400">Machine: ${t.machineNo} &bull; Date: ${t.scheduledDate}</p>
+                        ${t.actualMold ? `<p class="text-xs font-mono text-emerald-300 bg-emerald-950/30 border border-emerald-700/40 rounded-lg p-2">Actual Mold (Self): ${t.actualMold}</p>` : ""}
                         ${t.remarks ? `<p class="text-xs text-stone-300 bg-stone-900/80 border border-stone-800 rounded-lg p-2">Remark: ${t.remarks}</p>` : ""}
                         ${t.note ? `<p class="text-xs text-sky-300/90 bg-sky-950/30 border border-sky-800/40 rounded-lg p-2">${t.note}</p>` : ""}
                     </div>
@@ -1400,7 +1408,7 @@ function renderAll() {
 
     const tableBody = document.getElementById("schedule-table-body");
     if (rowsToShow.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-stone-500 font-mono text-xs">No PM schedule entries found</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-stone-500 font-mono text-xs">No PM schedule entries found</td></tr>`;
     } else {
         tableBody.innerHTML = rowsToShow
             .map(
@@ -1411,6 +1419,17 @@ function renderAll() {
                     <td class="py-3 px-4">
                         <div class="font-medium text-stone-100">${t.moldName}</div>
                         <div class="text-xs font-mono text-stone-400">${t.machineNo}</div>
+                    </td>
+                    <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
+                        <input
+                            type="text"
+                            value="${escapeHtmlAttr(t.actualMold || "")}"
+                            placeholder="Self mold done..."
+                            aria-label="Actual PM mold done by self for ${t.toolCode}"
+                            onchange="saveActualMoldSelf('${t.id}', this.value)"
+                            onkeydown="if (event.key === 'Enter') { this.blur(); }"
+                            class="w-40 sm:w-44 bg-[#0b0d11] border border-emerald-500/35 focus:border-emerald-400 rounded-lg px-2.5 py-1.5 text-xs font-mono text-emerald-200 placeholder-stone-500 focus:outline-none"
+                        />
                     </td>
                     <td class="py-3 px-4 whitespace-nowrap">${getStatusBadge(t.status)}</td>
                     <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
@@ -1431,32 +1450,10 @@ function renderAll() {
             )
             .join("");
     }
-
-    const menuLogCount = document.getElementById("menu-log-count");
-    if (menuLogCount) {
-        menuLogCount.textContent = `${allLogs.length} ${allLogs.length === 1 ? "entry" : "entries"}`;
-    }
-
-    const logList = document.getElementById("audit-log-list");
-    if (allLogs.length === 0) {
-        logList.innerHTML = `<div class="col-span-full text-stone-500 text-xs">No swap or completion events yet.</div>`;
-    } else {
-        logList.innerHTML = allLogs
-            .map(
-                (l) => `
-                <div class="rounded-lg border border-stone-800/90 bg-[#0b0d11] p-3 space-y-1">
-                    <div class="text-[10px] text-stone-500">${l.timestamp}</div>
-                    <div class="text-stone-200 leading-relaxed">${l.message}</div>
-                </div>
-            `
-            )
-            .join("");
-    }
 }
 
 async function refreshAll() {
     let idbTools = await getAllFromStore(STORE_TOOLS);
-    let idbLogs = await getAllFromStore(STORE_LOGS);
     const mirror = readLocalStorageMirror();
 
     if (idbTools.length === 0 && mirror && mirror.tools.length > 0) {
@@ -1465,16 +1462,9 @@ async function refreshAll() {
             await putToStore(STORE_TOOLS, t);
         }
     }
-    if (idbLogs.length === 0 && mirror && mirror.logs.length > 0) {
-        idbLogs = mirror.logs;
-        for (const l of idbLogs) {
-            await putToStore(STORE_LOGS, l);
-        }
-    }
 
     allTools = idbTools;
-    allLogs = idbLogs.sort((a, b) => b.id.localeCompare(a.id));
-    writeLocalStorageMirror(allTools, allLogs);
+    writeLocalStorageMirror(allTools);
     renderAll();
     if (moldSearchQuery.trim()) {
         renderHeaderMoldSearchDropdown();
@@ -1527,6 +1517,7 @@ document.getElementById("add-tool-form").addEventListener("submit", async (e) =>
         id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
         toolCode: String(fd.get("toolCode")).trim().toUpperCase(),
         moldName: String(fd.get("moldName")).trim(),
+        actualMold: "",
         machineNo: String(fd.get("machineNo")).trim().toUpperCase(),
         originalDate: sched,
         scheduledDate: sched,
@@ -1538,8 +1529,7 @@ document.getElementById("add-tool-form").addEventListener("submit", async (e) =>
     };
     allTools.push(item);
     await putToStore(STORE_TOOLS, item);
-    writeLocalStorageMirror(allTools, allLogs);
-    await addAuditLog(`ADDED: ${item.toolCode} (${item.moldName}) saved under calendar date ${sched}.`);
+    writeLocalStorageMirror(allTools);
     e.target.reset();
     addPanel.classList.add("hidden");
     selectCalendarDate(sched);
@@ -1551,8 +1541,7 @@ document.getElementById("export-json-btn").addEventListener("click", () => {
     const payload = {
         system: "ToolSync PM",
         exportedAt: new Date().toISOString(),
-        tools: allTools,
-        logs: allLogs
+        tools: allTools
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1572,12 +1561,8 @@ document.getElementById("import-json-input").addEventListener("change", async (e
         const data = JSON.parse(text);
         if (!Array.isArray(data.tools)) throw new Error("Invalid backup format");
         await clearStore(STORE_TOOLS);
-        await clearStore(STORE_LOGS);
         for (const t of data.tools) await putToStore(STORE_TOOLS, t);
-        if (Array.isArray(data.logs)) {
-            for (const l of data.logs) await putToStore(STORE_LOGS, l);
-        }
-        writeLocalStorageMirror(data.tools, Array.isArray(data.logs) ? data.logs : []);
+        writeLocalStorageMirror(data.tools);
         await refreshAll();
         showToast("Backup restored");
     } catch {
@@ -1587,12 +1572,24 @@ document.getElementById("import-json-input").addEventListener("change", async (e
 });
 
 document.getElementById("export-csv-btn").addEventListener("click", () => {
-    const headers = ["Scheduled Date", "Original Date", "Tool ID", "Mold Name", "Machine", "Status", "Before Photo", "After Photo", "Remarks"];
+    const headers = [
+        "Scheduled Date",
+        "Original Date",
+        "Tool ID (Planned)",
+        "Mold Name (Planned)",
+        "Actual PM Mold (Self)",
+        "Machine",
+        "Status",
+        "Before Photo",
+        "After Photo",
+        "Remarks"
+    ];
     const rows = allTools.map((t) => [
         t.scheduledDate,
         t.originalDate || t.scheduledDate,
         t.toolCode,
         `"${(t.moldName || "").replace(/"/g, '""')}"`,
+        `"${(t.actualMold || "").replace(/"/g, '""')}"`,
         t.machineNo,
         `"${(t.status || "").replace(/"/g, '""')}"`,
         t.beforePhoto ? "Yes" : "No",
@@ -1611,7 +1608,7 @@ document.getElementById("export-csv-btn").addEventListener("click", () => {
 });
 
 window.addEventListener("beforeunload", () => {
-    writeLocalStorageMirror(allTools, allLogs);
+    writeLocalStorageMirror(allTools);
 });
 
 (async function initApp() {
