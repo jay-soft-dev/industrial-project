@@ -1,13 +1,70 @@
 // =========================================================
-// IndexedDB Setup (Local Offline Storage for Privacy)
+// Dual Persistence Setup (IndexedDB + localStorage Fallback)
+// Prevents data loss on page refresh across file:// or strict browsers
 // =========================================================
 const DB_NAME = "ToolSyncPMDB";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_TOOLS = "pmTools";
 const STORE_LOGS = "auditLogs";
+const LS_BACKUP_KEY = "ToolSyncPM_Persistent_State_v1";
+
+function writeLocalStorageMirror(tools, logs) {
+    try {
+        // Keep photos if within safe quota; if quota exceeds, keep text/schedule records safely
+        const slimTools = tools.map((t) => ({
+            ...t,
+            beforePhoto: t.beforePhoto || null,
+            afterPhoto: t.afterPhoto || null
+        }));
+        const payload = JSON.stringify({
+            savedAt: Date.now(),
+            tools: slimTools,
+            logs: logs.slice(0, 120)
+        });
+        localStorage.setItem(LS_BACKUP_KEY, payload);
+    } catch {
+        // If base64 photos exceed localStorage quota, save without large photo strings so schedule never drops
+        try {
+            const textOnlyTools = tools.map(({ beforePhoto, afterPhoto, ...rest }) => ({
+                ...rest,
+                beforePhoto: beforePhoto ? "__IDB_PHOTO__" : null,
+                afterPhoto: afterPhoto ? "__IDB_PHOTO__" : null
+            }));
+            localStorage.setItem(
+                LS_BACKUP_KEY,
+                JSON.stringify({
+                    savedAt: Date.now(),
+                    tools: textOnlyTools,
+                    logs: logs.slice(0, 120)
+                })
+            );
+        } catch {
+            // Ignore if storage is disabled
+        }
+    }
+}
+
+function readLocalStorageMirror() {
+    try {
+        const raw = localStorage.getItem(LS_BACKUP_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.tools)) return null;
+        return {
+            tools: parsed.tools,
+            logs: Array.isArray(parsed.logs) ? parsed.logs : []
+        };
+    } catch {
+        return null;
+    }
+}
 
 function openDB() {
     return new Promise((resolve, reject) => {
+        if (!("indexedDB" in window)) {
+            reject(new Error("IndexedDB not supported"));
+            return;
+        }
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = (e) => {
             const db = e.target.result;
@@ -25,38 +82,75 @@ function openDB() {
 }
 
 async function getAllFromStore(storeName) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction(storeName, "readonly");
-        const req = tx.objectStore(storeName).getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-    });
+    try {
+        const db = await openDB();
+        return await new Promise((resolve, reject) => {
+            const tx = db.transaction(storeName, "readonly");
+            const req = tx.objectStore(storeName).getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => reject(req.error);
+        });
+    } catch {
+        const mirror = readLocalStorageMirror();
+        if (!mirror) return [];
+        return storeName === STORE_TOOLS ? mirror.tools : mirror.logs;
+    }
 }
 
 async function putToStore(storeName, item) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction(storeName, "readwrite");
-        tx.objectStore(storeName).put(item);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-    });
+    try {
+        const db = await openDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(storeName, "readwrite");
+            tx.objectStore(storeName).put(item);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    } catch {
+        // Fallback handled via mirror sync below
+    }
+}
+
+async function deleteByIdFromStore(storeName, id) {
+    try {
+        const db = await openDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(storeName, "readwrite");
+            tx.objectStore(storeName).delete(id);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    } catch {
+        // Handled via mirror sync below
+    }
 }
 
 async function clearStore(storeName) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction(storeName, "readwrite");
-        tx.objectStore(storeName).clear();
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-    });
+    try {
+        const db = await openDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(storeName, "readwrite");
+            tx.objectStore(storeName).clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    } catch {
+        // Handled via mirror sync below
+    }
 }
 
 // =========================================================
-// Helpers: Dates, Toast, Image Compression
+// Helpers: Dates, 12-Month Calendar, Toast, Image Compression
 // =========================================================
+const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
+const MONTH_SHORT = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
+
 function formatDateISO(dateObj) {
     const y = dateObj.getFullYear();
     const m = String(dateObj.getMonth() + 1).padStart(2, "0");
@@ -74,6 +168,10 @@ function addDaysISO(dateStr, days) {
 function getMonthFirstDayISO(dateStr) {
     const [y, m] = dateStr.split("-");
     return `${y}-${m}-01`;
+}
+
+function getYearMonthPrefix(year, monthIndex) {
+    return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
 }
 
 const toastEl = document.getElementById("toast");
@@ -115,16 +213,42 @@ function compressImageFile(file, maxWidth = 900, quality = 0.72) {
 // =========================================================
 // App State & Core PM Logic
 // =========================================================
+const todayISO = formatDateISO(new Date());
 let allTools = [];
 let allLogs = [];
-let activeDate = formatDateISO(new Date());
+let activeDate = todayISO;
+let tableShowAllDates = false;
+
+const [initY, initM] = todayISO.split("-").map(Number);
+let calYear = initY;
+let calMonth = initM - 1;
+
 let activeModalToolId = null;
 let draftBeforePhoto = null;
 let draftAfterPhoto = null;
 let lastRawOcrText = "";
 
 const dateInput = document.getElementById("selected-date");
+const monthSelect = document.getElementById("calendar-month-select");
+const yearSelect = document.getElementById("calendar-year-select");
+const addPanel = document.getElementById("add-tool-panel");
+
+function populateYearOptions(centerYear) {
+    const startYear = centerYear - 5;
+    const endYear = centerYear + 2;
+    yearSelect.innerHTML = "";
+    for (let y = startYear; y <= endYear; y++) {
+        const opt = document.createElement("option");
+        opt.value = String(y);
+        opt.textContent = String(y);
+        if (y === calYear) opt.selected = true;
+        yearSelect.appendChild(opt);
+    }
+}
+
+populateYearOptions(initY);
 dateInput.value = activeDate;
+monthSelect.value = String(calMonth);
 
 async function addAuditLog(message) {
     const entry = {
@@ -134,40 +258,7 @@ async function addAuditLog(message) {
     };
     await putToStore(STORE_LOGS, entry);
     allLogs.unshift(entry);
-}
-
-// Generate 80-mold sample plan (3 tools/day across 27 days)
-async function seedSampleMonth() {
-    await clearStore(STORE_TOOLS);
-    await clearStore(STORE_LOGS);
-
-    const startDay = getMonthFirstDayISO(activeDate);
-    const totalMolds = 80;
-
-    for (let i = 0; i < totalMolds; i++) {
-        const dayOffset = Math.floor(i / 3); // 3 tools per day (Day 0..25 = 3 tools, Day 26 = 2 tools)
-        const sched = addDaysISO(startDay, dayOffset);
-        const toolNum = String(i + 1).padStart(3, "0");
-        const machineNum = String((i % 12) + 1).padStart(2, "0");
-
-        await putToStore(STORE_TOOLS, {
-            id: `tool_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 5)}`,
-            toolCode: `IM-${toolNum}`,
-            moldName: `Production Mold #${toolNum}`,
-            machineNo: `IMM-${machineNum}`,
-            originalDate: sched,
-            scheduledDate: sched,
-            status: "Scheduled",
-            note: "",
-            beforePhoto: null,
-            afterPhoto: null,
-            remarks: ""
-        });
-    }
-
-    await addAuditLog(`80-Mold Monthly Plan generated from ${startDay} (3 molds/day).`);
-    await refreshAll();
-    showToast("80-Mold sample month loaded");
+    writeLocalStorageMirror(allTools, allLogs);
 }
 
 // Auto-Swap / Reschedule when tool is running on machine
@@ -213,6 +304,53 @@ async function handleMachineRunning(toolId) {
 }
 
 // =========================================================
+// 12-Month Calendar Navigation
+// =========================================================
+function setCalendarMonth(year, monthIndex, selectFirstDayIfOutside = false) {
+    const normalized = new Date(year, monthIndex, 1);
+    calYear = normalized.getFullYear();
+    calMonth = normalized.getMonth();
+
+    const existingYears = Array.from(yearSelect.options).map((o) => Number(o.value));
+    if (!existingYears.includes(calYear)) {
+        populateYearOptions(calYear);
+    }
+    yearSelect.value = String(calYear);
+    monthSelect.value = String(calMonth);
+
+    const ymPrefix = getYearMonthPrefix(calYear, calMonth);
+    if (selectFirstDayIfOutside && !activeDate.startsWith(ymPrefix)) {
+        activeDate = `${ymPrefix}-01`;
+        dateInput.value = activeDate;
+    }
+
+    renderAll();
+}
+
+document.getElementById("prev-month-btn").addEventListener("click", () => {
+    setCalendarMonth(calYear, calMonth - 1, true);
+});
+
+document.getElementById("next-month-btn").addEventListener("click", () => {
+    setCalendarMonth(calYear, calMonth + 1, true);
+});
+
+monthSelect.addEventListener("change", (e) => {
+    setCalendarMonth(calYear, Number(e.target.value), true);
+});
+
+yearSelect.addEventListener("change", (e) => {
+    setCalendarMonth(Number(e.target.value), calMonth, true);
+});
+
+document.getElementById("jump-today-btn").addEventListener("click", () => {
+    activeDate = todayISO;
+    dateInput.value = activeDate;
+    const [y, m] = todayISO.split("-").map(Number);
+    setCalendarMonth(y, m - 1, false);
+});
+
+// =========================================================
 // Plan Photo OCR & Date-Wise Text Format Converter (80 Molds)
 // =========================================================
 const ocrModal = document.getElementById("ocr-modal");
@@ -239,7 +377,6 @@ document.getElementById("close-ocr-modal-btn").addEventListener("click", () => {
     ocrModal.classList.remove("flex");
 });
 
-// Extract mold codes & optional dates from OCR text and arrange into Date-wise text lines
 function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
     const lines = rawText
         .split(/\r?\n/)
@@ -247,10 +384,9 @@ function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
         .filter(Boolean);
 
     const [baseYear, baseMonth] = monthStartISO.split("-");
-    const dateMap = new Map(); // dateISO -> array of mold codes
+    const dateMap = new Map();
     const ungroupedMolds = [];
 
-    // Match patterns like IM-101, T-05, MOLD-12, TL04, or standalone 2-4 digit mold codes
     const moldTokenRegex = /\b(?:IM|T|TL|MLD|MOLD|M)[-\s]?\d{1,4}[A-Z]?\b/gi;
     const dateRegex = /\b(\d{1,2})[\/\-\.](\d{1,2})(?:[\/\-\.](\d{2,4}))?\b/;
 
@@ -284,7 +420,6 @@ function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
         }
     }
 
-    // If dates were detected alongside molds on lines, format those first
     const outputLines = [];
     if (dateMap.size > 0) {
         const sortedDates = Array.from(dateMap.keys()).sort();
@@ -293,7 +428,6 @@ function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
         }
     }
 
-    // Distribute remaining molds (or up to 80 molds) at 3 molds/day
     if (ungroupedMolds.length > 0) {
         const startOffset = outputLines.length;
         for (let i = 0; i < ungroupedMolds.length; i += 3) {
@@ -303,7 +437,6 @@ function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
         }
     }
 
-    // Fallback: if OCR didn't match standard prefixes, show cleaned lines so user can inspect/edit
     if (outputLines.length === 0) {
         return lines
             .map((line, idx) => `${addDaysISO(monthStartISO, Math.floor(idx / 3))} | ${line}`)
@@ -313,12 +446,10 @@ function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
     return outputLines.join("\n");
 }
 
-// Re-distribute whatever mold IDs are currently in the textarea across 3 tools/day (supports 80 molds)
 document.getElementById("auto-distribute-80-btn").addEventListener("click", () => {
     const startISO = planStartDateInput.value || getMonthFirstDayISO(activeDate);
     const currentText = datewiseTextarea.value.trim();
 
-    // Extract all mold items after '|' or across all lines
     const extracted = [];
     const lines = currentText.split(/\r?\n/);
     for (const line of lines) {
@@ -332,7 +463,6 @@ document.getElementById("auto-distribute-80-btn").addEventListener("click", () =
         }
     }
 
-    // If empty, generate an 80-mold template (MOLD-001 to MOLD-080)
     const listToMap =
         extracted.length > 0
             ? extracted
@@ -384,8 +514,8 @@ planPhotoInput.addEventListener("change", async (e) => {
         ocrStatusText.textContent = "Scan complete — review text below";
         updateParsedCounter();
         showToast("Plan photo converted to date-wise text");
-    } catch (err) {
-        ocrStatusText.textContent = "Could not auto-read image; you can paste or auto-map 80 molds.";
+    } catch {
+        ocrStatusText.textContent = "Could not auto-read image; edit manually or use Auto-Map.";
         showToast("OCR scan failed — edit manually");
     }
 });
@@ -413,7 +543,7 @@ function parseDateWiseLines(text) {
 function updateParsedCounter() {
     const parsed = parseDateWiseLines(datewiseTextarea.value);
     const uniqueDays = new Set(parsed.map((p) => p.dateStr)).size;
-    parsedSummaryLabel.textContent = `${parsed.length} molds across ${uniqueDays} days ready to import`;
+    parsedSummaryLabel.textContent = `${parsed.length} molds across ${uniqueDays} calendar dates ready to save`;
 }
 
 datewiseTextarea.addEventListener("input", updateParsedCounter);
@@ -436,7 +566,14 @@ document.getElementById("import-replace-btn").addEventListener("click", async ()
         return;
     }
 
-    await clearStore(STORE_TOOLS);
+    const affectedMonths = new Set(parsed.map((p) => p.dateStr.slice(0, 7)));
+    const existingInTargetMonths = allTools.filter((t) =>
+        affectedMonths.has(t.scheduledDate.slice(0, 7))
+    );
+    for (const oldItem of existingInTargetMonths) {
+        await deleteByIdFromStore(STORE_TOOLS, oldItem.id);
+    }
+
     for (let i = 0; i < parsed.length; i++) {
         const { dateStr, moldCode } = parsed[i];
         await putToStore(STORE_TOOLS, {
@@ -456,11 +593,16 @@ document.getElementById("import-replace-btn").addEventListener("click", async ()
 
     activeDate = parsed[0].dateStr;
     dateInput.value = activeDate;
-    await addAuditLog(`IMPORTED PLAN: Loaded ${parsed.length} molds from Date-Wise Plan Text.`);
+    const [y, m] = activeDate.split("-").map(Number);
+    setCalendarMonth(y, m - 1, false);
+
+    await addAuditLog(
+        `SCHEDULE BOUND TO CALENDAR: Saved ${parsed.length} molds (${Array.from(affectedMonths).join(", ")}).`
+    );
     ocrModal.classList.add("hidden");
     ocrModal.classList.remove("flex");
     await refreshAll();
-    showToast(`Loaded ${parsed.length} molds into schedule`);
+    showToast(`Saved ${parsed.length} molds to calendar dates`);
 });
 
 // =========================================================
@@ -477,7 +619,7 @@ const afterPlaceholder = document.getElementById("after-photo-placeholder");
 const remarksInput = document.getElementById("pm-remarks");
 
 function setPhotoSlot(imgEl, placeholderEl, dataUrl) {
-    if (dataUrl) {
+    if (dataUrl && dataUrl !== "__IDB_PHOTO__") {
         imgEl.src = dataUrl;
         imgEl.classList.remove("hidden");
         placeholderEl.classList.add("hidden");
@@ -492,8 +634,8 @@ function openPhotoModal(toolId) {
     const tool = allTools.find((t) => t.id === toolId);
     if (!tool) return;
     activeModalToolId = tool.id;
-    draftBeforePhoto = tool.beforePhoto || null;
-    draftAfterPhoto = tool.afterPhoto || null;
+    draftBeforePhoto = tool.beforePhoto && tool.beforePhoto !== "__IDB_PHOTO__" ? tool.beforePhoto : null;
+    draftAfterPhoto = tool.afterPhoto && tool.afterPhoto !== "__IDB_PHOTO__" ? tool.afterPhoto : null;
     remarksInput.value = tool.remarks || "";
 
     modalTitle.textContent = `${tool.toolCode} — ${tool.moldName} (${tool.scheduledDate})`;
@@ -543,7 +685,7 @@ async function saveModalChanges(markCompleted) {
         tool.completedAt = new Date().toISOString();
         await addAuditLog(`PM COMPLETED: ${tool.toolCode} (${tool.moldName}) on ${tool.scheduledDate}.`);
     } else {
-        await addAuditLog(`PHOTOS SAVED: ${tool.toolCode} before/after proof updated.`);
+        await addAuditLog(`PHOTOS SAVED: ${tool.toolCode} on ${tool.scheduledDate} updated.`);
     }
 
     await putToStore(STORE_TOOLS, tool);
@@ -569,24 +711,173 @@ function getStatusBadge(status) {
     return `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30">Scheduled</span>`;
 }
 
-function renderAll() {
-    const todaysTools = allTools.filter((t) => t.scheduledDate === activeDate);
-    const completedToday = todaysTools.filter((t) => t.status === "PM Completed").length;
-    const swappedTotal = allTools.filter((t) => t.status === "Swapped / Rescheduled").length;
+function selectCalendarDate(dateStr) {
+    activeDate = dateStr;
+    dateInput.value = dateStr;
+    const [y, m] = dateStr.split("-").map(Number);
+    calYear = y;
+    calMonth = m - 1;
+    monthSelect.value = String(calMonth);
+    const existingYears = Array.from(yearSelect.options).map((o) => Number(o.value));
+    if (!existingYears.includes(calYear)) {
+        populateYearOptions(calYear);
+    }
+    yearSelect.value = String(calYear);
+    renderAll();
+}
 
-    document.getElementById("stat-day-count").textContent = `${completedToday} / ${Math.max(3, todaysTools.length)}`;
-    document.getElementById("stat-swapped-count").textContent = String(swappedTotal);
-    document.getElementById("stat-total-tools").textContent = String(allTools.length);
+function renderTwelveMonthPills() {
+    const pillsContainer = document.getElementById("twelve-month-pills");
+    pillsContainer.innerHTML = MONTH_SHORT.map((shortLabel, idx) => {
+        const prefix = getYearMonthPrefix(calYear, idx);
+        const count = allTools.filter((t) => t.scheduledDate.startsWith(prefix)).length;
+        const isCurrent = idx === calMonth;
+        return `
+            <button
+                type="button"
+                onclick="setCalendarMonth(${calYear}, ${idx}, true)"
+                class="shrink-0 px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${
+                    isCurrent
+                        ? "border-amber-400 bg-amber-400/15 text-amber-300 font-bold"
+                        : "border-stone-800 bg-[#0b0d11] hover:border-stone-600 text-stone-300"
+                }"
+            >
+                <span>${shortLabel}</span>
+                <span class="px-1.5 py-0.2 rounded bg-stone-800 text-[10px] text-stone-200">${count}</span>
+            </button>
+        `;
+    }).join("");
+}
+
+function renderCalendarGrid() {
+    document.getElementById("calendar-month-heading").textContent = `${MONTH_NAMES[calMonth]} ${calYear}`;
+    renderTwelveMonthPills();
+
+    const grid = document.getElementById("calendar-days-grid");
+    const firstWeekday = new Date(calYear, calMonth, 1).getDay();
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+    const byDate = new Map();
+    for (const tool of allTools) {
+        const list = byDate.get(tool.scheduledDate) || [];
+        list.push(tool);
+        byDate.set(tool.scheduledDate, list);
+    }
+
+    const cells = [];
+    for (let i = 0; i < firstWeekday; i++) {
+        cells.push(`<div class="min-h-[76px] sm:min-h-[88px] rounded-xl border border-stone-900/60 bg-[#0a0c10]/50"></div>`);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const dayTools = byDate.get(dateStr) || [];
+        const doneCount = dayTools.filter((t) => t.status === "PM Completed").length;
+        const swapCount = dayTools.filter((t) => t.status === "Swapped / Rescheduled").length;
+        const allDoneOnDate = dayTools.length > 0 && doneCount === dayTools.length;
+
+        const isSelected = dateStr === activeDate;
+        const isToday = dateStr === todayISO;
+
+        const borderClass = isSelected
+            ? "border-amber-400 ring-1 ring-amber-400/60 bg-[#171c26]"
+            : allDoneOnDate
+            ? "border-emerald-500/40 bg-[#0e1714] hover:border-emerald-400/70"
+            : isToday
+            ? "border-sky-400/60 bg-[#131822]"
+            : "border-stone-800/90 bg-[#0b0d11] hover:border-stone-600";
+
+        cells.push(`
+            <button
+                type="button"
+                onclick="selectCalendarDate('${dateStr}')"
+                class="min-h-[76px] sm:min-h-[88px] rounded-xl border ${borderClass} p-1.5 sm:p-2 text-left flex flex-col justify-between transition"
+            >
+                <div class="flex items-center justify-between w-full font-mono text-xs">
+                    <span class="${isSelected ? "text-amber-300 font-bold" : "text-stone-300"}">${day}</span>
+                    ${
+                        allDoneOnDate
+                            ? `<span class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">PM DONE</span>`
+                            : isToday
+                            ? `<span class="text-[9px] px-1 rounded bg-sky-500/20 text-sky-300">TODAY</span>`
+                            : ""
+                    }
+                </div>
+
+                <div class="space-y-1 w-full">
+                    ${
+                        dayTools.length > 0
+                            ? `<div class="text-[10px] font-mono text-amber-300 truncate">${dayTools.map((x) => x.toolCode).join(", ")}</div>`
+                            : `<div class="text-[10px] font-mono text-stone-600">—</div>`
+                    }
+                    ${
+                        swapCount > 0
+                            ? `<div class="text-[9px] font-mono text-sky-300 truncate">${swapCount} swapped</div>`
+                            : ""
+                    }
+                </div>
+            </button>
+        `);
+    }
+
+    grid.innerHTML = cells.join("");
+}
+
+function renderClickedDateStatusBanner(selectedDayTools) {
+    const badgeEl = document.getElementById("clicked-date-badge");
+    const summaryEl = document.getElementById("clicked-date-summary");
+
+    badgeEl.textContent = `Calendar Date Record • ${activeDate}`;
+
+    if (selectedDayTools.length === 0) {
+        summaryEl.innerHTML = `No PM entry saved behind <span class="font-mono text-amber-300">${activeDate}</span> yet.`;
+        return;
+    }
+
+    const doneTools = selectedDayTools.filter((t) => t.status === "PM Completed");
+    const pendingTools = selectedDayTools.filter((t) => t.status !== "PM Completed");
+
+    if (doneTools.length === selectedDayTools.length) {
+        summaryEl.innerHTML = `<span class="text-emerald-400 font-bold">✔ PM Completed on ${activeDate}</span> — ${doneTools
+            .map((t) => `${t.toolCode} (${t.moldName})`)
+            .join(", ")}`;
+    } else if (doneTools.length > 0) {
+        summaryEl.innerHTML = `<span class="text-amber-300 font-bold">Partial PM on ${activeDate}:</span> ${doneTools.length} completed (${doneTools
+            .map((t) => t.toolCode)
+            .join(", ")}), ${pendingTools.length} pending (${pendingTools.map((t) => t.toolCode).join(", ")})`;
+    } else {
+        summaryEl.innerHTML = `<span class="text-amber-300 font-bold">Scheduled on ${activeDate}:</span> ${selectedDayTools
+            .map((t) => `${t.toolCode} [${t.status}]`)
+            .join(", ")}`;
+    }
+}
+
+function renderAll() {
+    renderCalendarGrid();
+
+    const ymPrefix = getYearMonthPrefix(calYear, calMonth);
+    const monthTools = allTools.filter((t) => t.scheduledDate.startsWith(ymPrefix));
+    const selectedDayTools = allTools.filter((t) => t.scheduledDate === activeDate);
+    const completedOnDay = selectedDayTools.filter((t) => t.status === "PM Completed").length;
+    const swappedInMonth = monthTools.filter((t) => t.status === "Swapped / Rescheduled").length;
+
+    document.getElementById("stat-day-count").textContent = `${completedOnDay} / ${Math.max(3, selectedDayTools.length)}`;
+    document.getElementById("stat-swapped-count").textContent = String(swappedInMonth);
+    document.getElementById("stat-month-tools").textContent = String(monthTools.length);
+
+    renderClickedDateStatusBanner(selectedDayTools);
+
+    document.getElementById("daily-section-heading").textContent = `Mold PM on ${activeDate}`;
 
     const cardsGrid = document.getElementById("daily-cards-grid");
-    if (todaysTools.length === 0) {
+    if (selectedDayTools.length === 0) {
         cardsGrid.innerHTML = `
             <div class="col-span-full rounded-2xl border border-dashed border-stone-800 bg-[#11151d]/60 p-8 text-center text-sm text-stone-400">
-                No mold PM scheduled for <span class="font-mono text-amber-400">${activeDate}</span>. Click <strong class="text-sky-300">📷 Import Plan Photo (OCR)</strong> or <strong class="text-stone-200">+ Add Mold Slot</strong>.
+                No mold PM saved for <span class="font-mono text-amber-400">${activeDate}</span>. Click <strong class="text-amber-300">+ Add PM on Selected Date</strong> to store PM records behind this date.
             </div>
         `;
     } else {
-        cardsGrid.innerHTML = todaysTools
+        cardsGrid.innerHTML = selectedDayTools
             .map(
                 (t) => `
                 <article class="rounded-2xl border border-stone-800 bg-[#11151d] p-5 flex flex-col justify-between gap-4 hover:border-stone-700 transition">
@@ -596,7 +887,8 @@ function renderAll() {
                             ${getStatusBadge(t.status)}
                         </div>
                         <h3 class="font-bold text-base text-white">${t.moldName}</h3>
-                        <p class="text-xs font-mono text-stone-400">Machine: ${t.machineNo} • PM Date: ${t.scheduledDate}</p>
+                        <p class="text-xs font-mono text-stone-400">Machine: ${t.machineNo} • Date: ${t.scheduledDate}</p>
+                        ${t.remarks ? `<p class="text-xs text-stone-300 bg-stone-900/80 border border-stone-800 rounded-lg p-2">Remark: ${t.remarks}</p>` : ""}
                         ${t.note ? `<p class="text-xs text-sky-300/90 bg-sky-950/30 border border-sky-800/40 rounded-lg p-2">${t.note}</p>` : ""}
                     </div>
 
@@ -620,15 +912,21 @@ function renderAll() {
             .join("");
     }
 
-    const sorted = [...allTools].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+    const rowsToShow = tableShowAllDates ? [...allTools] : [...monthTools];
+    rowsToShow.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+
+    document.getElementById("pm-schedule-heading").textContent = tableShowAllDates
+        ? `PM Schedule — All Dates (${rowsToShow.length})`
+        : `PM Schedule — ${MONTH_NAMES[calMonth]} ${calYear} (${rowsToShow.length})`;
+
     const tableBody = document.getElementById("schedule-table-body");
-    if (sorted.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-stone-500 font-mono text-xs">No records found</td></tr>`;
+    if (rowsToShow.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-stone-500 font-mono text-xs">No PM schedule entries found</td></tr>`;
     } else {
-        tableBody.innerHTML = sorted
+        tableBody.innerHTML = rowsToShow
             .map(
                 (t) => `
-                <tr class="hover:bg-stone-900/50">
+                <tr class="hover:bg-stone-900/50 cursor-pointer" onclick="selectCalendarDate('${t.scheduledDate}')">
                     <td class="py-3 px-4 font-mono text-xs whitespace-nowrap text-stone-300">${t.scheduledDate}</td>
                     <td class="py-3 px-4 font-mono text-xs font-bold text-amber-400 whitespace-nowrap">${t.toolCode}</td>
                     <td class="py-3 px-4">
@@ -636,7 +934,7 @@ function renderAll() {
                         <div class="text-xs font-mono text-stone-400">${t.machineNo}</div>
                     </td>
                     <td class="py-3 px-4 whitespace-nowrap">${getStatusBadge(t.status)}</td>
-                    <td class="py-3 px-4 whitespace-nowrap">
+                    <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
                         <button type="button" onclick="openPhotoModal('${t.id}')" class="text-xs font-mono underline text-amber-300 hover:text-amber-200">
                             ${t.beforePhoto || t.afterPhoto ? "View / Edit" : "Upload"}
                         </button>
@@ -665,23 +963,66 @@ function renderAll() {
 }
 
 async function refreshAll() {
-    allTools = await getAllFromStore(STORE_TOOLS);
-    allLogs = (await getAllFromStore(STORE_LOGS)).sort((a, b) => b.id.localeCompare(a.id));
+    let idbTools = await getAllFromStore(STORE_TOOLS);
+    let idbLogs = await getAllFromStore(STORE_LOGS);
+    const mirror = readLocalStorageMirror();
+
+    // If IndexedDB is empty on refresh (e.g., restricted file:// origin), recover from localStorage mirror
+    if (idbTools.length === 0 && mirror && mirror.tools.length > 0) {
+        idbTools = mirror.tools;
+        for (const t of idbTools) {
+            await putToStore(STORE_TOOLS, t);
+        }
+    }
+    if (idbLogs.length === 0 && mirror && mirror.logs.length > 0) {
+        idbLogs = mirror.logs;
+        for (const l of idbLogs) {
+            await putToStore(STORE_LOGS, l);
+        }
+    }
+
+    allTools = idbTools;
+    allLogs = idbLogs.sort((a, b) => b.id.localeCompare(a.id));
+    writeLocalStorageMirror(allTools, allLogs);
     renderAll();
 }
 
 // =========================================================
-// Events: Date Change, Add Tool, Backup / CSV
+// Events: Date Change, Add Tool, Table Filter, Backup / CSV
 // =========================================================
 dateInput.addEventListener("change", (e) => {
-    activeDate = e.target.value || formatDateISO(new Date());
-    renderAll();
+    const val = e.target.value || todayISO;
+    selectCalendarDate(val);
 });
 
-const addPanel = document.getElementById("add-tool-panel");
+function openAddFormForActiveDate() {
+    document.getElementById("new-tool-date").value = activeDate;
+    addPanel.classList.remove("hidden");
+    addPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 document.getElementById("open-add-tool-btn").addEventListener("click", () => {
     document.getElementById("new-tool-date").value = activeDate;
     addPanel.classList.toggle("hidden");
+});
+
+document.getElementById("quick-add-for-selected-date-btn").addEventListener("click", openAddFormForActiveDate);
+
+const filterMonthBtn = document.getElementById("filter-month-btn");
+const filterAllBtn = document.getElementById("filter-all-btn");
+
+filterMonthBtn.addEventListener("click", () => {
+    tableShowAllDates = false;
+    filterMonthBtn.className = "px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300";
+    filterAllBtn.className = "px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400";
+    renderAll();
+});
+
+filterAllBtn.addEventListener("click", () => {
+    tableShowAllDates = true;
+    filterAllBtn.className = "px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300";
+    filterMonthBtn.className = "px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400";
+    renderAll();
 });
 
 document.getElementById("add-tool-form").addEventListener("submit", async (e) => {
@@ -701,15 +1042,16 @@ document.getElementById("add-tool-form").addEventListener("submit", async (e) =>
         afterPhoto: null,
         remarks: ""
     };
+    allTools.push(item);
     await putToStore(STORE_TOOLS, item);
-    await addAuditLog(`ADDED: ${item.toolCode} (${item.moldName}) scheduled for ${sched}.`);
+    writeLocalStorageMirror(allTools, allLogs);
+    await addAuditLog(`ADDED: ${item.toolCode} (${item.moldName}) saved under calendar date ${sched}.`);
     e.target.reset();
     addPanel.classList.add("hidden");
+    selectCalendarDate(sched);
     await refreshAll();
-    showToast("Mold slot added");
+    showToast(`Saved to ${sched}`);
 });
-
-document.getElementById("seed-demo-btn").addEventListener("click", seedSampleMonth);
 
 document.getElementById("export-json-btn").addEventListener("click", () => {
     const payload = {
@@ -741,6 +1083,7 @@ document.getElementById("import-json-input").addEventListener("change", async (e
         if (Array.isArray(data.logs)) {
             for (const l of data.logs) await putToStore(STORE_LOGS, l);
         }
+        writeLocalStorageMirror(data.tools, Array.isArray(data.logs) ? data.logs : []);
         await refreshAll();
         showToast("Backup restored");
     } catch {
@@ -771,6 +1114,11 @@ document.getElementById("export-csv-btn").addEventListener("click", () => {
     a.click();
     URL.revokeObjectURL(url);
     showToast("CSV report downloaded");
+});
+
+// Save latest state if user closes or refreshes tab
+window.addEventListener("beforeunload", () => {
+    writeLocalStorageMirror(allTools, allLogs);
 });
 
 refreshAll();
