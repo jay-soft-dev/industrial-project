@@ -1,0 +1,18 @@
+/* Custom scrollbar for industrial dark UI */
+::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0b0d11;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #272d3a;
+    border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #fbbf24;
+}
