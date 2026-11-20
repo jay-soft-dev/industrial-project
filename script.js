@@ -137,7 +137,6 @@ async function clearStore(storeName) {
     }
 }
 
-// Wipe any prior sample/old keys once so user starts with a completely clean slate
 async function runOneTimeCleanSlate() {
     try {
         if (localStorage.getItem(CLEAN_SLATE_FLAG) === "true") return;
@@ -251,6 +250,7 @@ let calYear = initY;
 let calMonth = initM - 1;
 
 let activeModalToolId = null;
+let activeEditToolId = null;
 let draftBeforePhoto = null;
 let draftAfterPhoto = null;
 let lastRawOcrText = "";
@@ -287,6 +287,102 @@ async function addAuditLog(message) {
     allLogs.unshift(entry);
     writeLocalStorageMirror(allTools, allLogs);
 }
+
+// Global Edit & Delete Actions (Available from Clicked Date Banner, Cards, Table, and Modals)
+async function deleteToolRecord(toolId, skipConfirm = false) {
+    const target = allTools.find((t) => t.id === toolId);
+    if (!target) return false;
+
+    if (!skipConfirm) {
+        const ok = window.confirm(
+            `Delete "${target.toolCode} — ${target.moldName}" scheduled on ${target.scheduledDate}?`
+        );
+        if (!ok) return false;
+    }
+
+    allTools = allTools.filter((t) => t.id !== toolId);
+    await deleteByIdFromStore(STORE_TOOLS, toolId);
+    writeLocalStorageMirror(allTools, allLogs);
+
+    if (activeModalToolId === toolId) closePhotoModal();
+    if (activeEditToolId === toolId) closeEditModal();
+
+    await addAuditLog(`DELETED: ${target.toolCode} (${target.moldName}) removed from ${target.scheduledDate}.`);
+    await refreshAll();
+    showToast(`Deleted ${target.toolCode}`);
+    return true;
+}
+
+// Edit Modal Logic
+const editModal = document.getElementById("edit-tool-modal");
+const editModalHeading = document.getElementById("edit-modal-heading");
+const editToolForm = document.getElementById("edit-tool-form");
+const editToolCodeInput = document.getElementById("edit-tool-code");
+const editMoldNameInput = document.getElementById("edit-mold-name");
+const editMachineNoInput = document.getElementById("edit-machine-no");
+const editScheduledDateInput = document.getElementById("edit-scheduled-date");
+const editStatusSelect = document.getElementById("edit-status");
+const editRemarksInput = document.getElementById("edit-remarks");
+
+function openEditModal(toolId) {
+    const tool = allTools.find((t) => t.id === toolId);
+    if (!tool) return;
+    activeEditToolId = tool.id;
+    editModalHeading.textContent = `Edit ${tool.toolCode} — ${tool.moldName}`;
+    editToolCodeInput.value = tool.toolCode || "";
+    editMoldNameInput.value = tool.moldName || "";
+    editMachineNoInput.value = tool.machineNo || "";
+    editScheduledDateInput.value = tool.scheduledDate || activeDate;
+    editStatusSelect.value = tool.status || "Scheduled";
+    editRemarksInput.value = tool.remarks || "";
+
+    editModal.classList.remove("hidden");
+    editModal.classList.add("flex");
+}
+
+function closeEditModal() {
+    activeEditToolId = null;
+    editModal.classList.add("hidden");
+    editModal.classList.remove("flex");
+}
+
+document.getElementById("close-edit-modal-btn").addEventListener("click", closeEditModal);
+document.getElementById("cancel-edit-btn").addEventListener("click", closeEditModal);
+
+document.getElementById("delete-from-edit-btn").addEventListener("click", async () => {
+    if (!activeEditToolId) return;
+    await deleteToolRecord(activeEditToolId);
+});
+
+editToolForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!activeEditToolId) return;
+    const tool = allTools.find((t) => t.id === activeEditToolId);
+    if (!tool) return;
+
+    const prevDate = tool.scheduledDate;
+    tool.toolCode = editToolCodeInput.value.trim().toUpperCase();
+    tool.moldName = editMoldNameInput.value.trim();
+    tool.machineNo = editMachineNoInput.value.trim().toUpperCase();
+    tool.scheduledDate = editScheduledDateInput.value || prevDate;
+    tool.status = editStatusSelect.value;
+    tool.remarks = editRemarksInput.value.trim();
+    if (tool.status === "PM Completed" && !tool.completedAt) {
+        tool.completedAt = new Date().toISOString();
+    }
+
+    await putToStore(STORE_TOOLS, tool);
+    writeLocalStorageMirror(allTools, allLogs);
+    await addAuditLog(
+        `EDITED: ${tool.toolCode} (${tool.moldName}) updated on ${tool.scheduledDate} [${tool.status}].`
+    );
+
+    const targetDate = tool.scheduledDate;
+    closeEditModal();
+    selectCalendarDate(targetDate);
+    await refreshAll();
+    showToast(`Updated ${tool.toolCode}`);
+});
 
 // Auto-Swap / Reschedule when tool is running on machine
 async function handleMachineRunning(toolId) {
@@ -378,7 +474,7 @@ document.getElementById("jump-today-btn").addEventListener("click", () => {
 });
 
 // =========================================================
-// Plan Photo OCR & Date-Wise Text Format Converter (80 Molds)
+// Plan Photo OCR & Date-Wise Text Format Converter
 // =========================================================
 const ocrModal = document.getElementById("ocr-modal");
 const planPhotoInput = document.getElementById("plan-photo-input");
@@ -683,6 +779,25 @@ function closePhotoModal() {
     photoModal.classList.remove("flex");
 }
 
+document.getElementById("remove-before-photo-btn").addEventListener("click", () => {
+    draftBeforePhoto = null;
+    beforeInput.value = "";
+    setPhotoSlot(beforePreview, beforePlaceholder, null);
+    showToast("Before photo cleared");
+});
+
+document.getElementById("remove-after-photo-btn").addEventListener("click", () => {
+    draftAfterPhoto = null;
+    afterInput.value = "";
+    setPhotoSlot(afterPreview, afterPlaceholder, null);
+    showToast("After photo cleared");
+});
+
+document.getElementById("delete-from-photo-btn").addEventListener("click", async () => {
+    if (!activeModalToolId) return;
+    await deleteToolRecord(activeModalToolId);
+});
+
 beforeInput.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -716,6 +831,7 @@ async function saveModalChanges(markCompleted) {
     }
 
     await putToStore(STORE_TOOLS, tool);
+    writeLocalStorageMirror(allTools, allLogs);
     closePhotoModal();
     await refreshAll();
     showToast(markCompleted ? "PM marked completed" : "Photos saved");
@@ -853,11 +969,13 @@ function renderCalendarGrid() {
 function renderClickedDateStatusBanner(selectedDayTools) {
     const badgeEl = document.getElementById("clicked-date-badge");
     const summaryEl = document.getElementById("clicked-date-summary");
+    const quickActionsEl = document.getElementById("clicked-date-quick-actions");
 
     badgeEl.textContent = `Calendar Date Record • ${activeDate}`;
 
     if (selectedDayTools.length === 0) {
         summaryEl.innerHTML = `No PM entry saved behind <span class="font-mono text-amber-300">${activeDate}</span> yet.`;
+        quickActionsEl.innerHTML = "";
         return;
     }
 
@@ -865,7 +983,7 @@ function renderClickedDateStatusBanner(selectedDayTools) {
     const pendingTools = selectedDayTools.filter((t) => t.status !== "PM Completed");
 
     if (doneTools.length === selectedDayTools.length) {
-        summaryEl.innerHTML = `<span class="text-emerald-400 font-bold">✔ PM Completed on ${activeDate}</span> — ${doneTools
+        summaryEl.innerHTML = `<span class="text-emerald-400 font-bold">&#10004; PM Completed on ${activeDate}</span> — ${doneTools
             .map((t) => `${t.toolCode} (${t.moldName})`)
             .join(", ")}`;
     } else if (doneTools.length > 0) {
@@ -877,6 +995,30 @@ function renderClickedDateStatusBanner(selectedDayTools) {
             .map((t) => `${t.toolCode} [${t.status}]`)
             .join(", ")}`;
     }
+
+    quickActionsEl.innerHTML = selectedDayTools
+        .map(
+            (t) => `
+            <span class="inline-flex items-center gap-1 rounded-lg bg-[#11151d] border border-stone-800 px-2 py-1 text-[11px] font-mono">
+                <span class="text-amber-300 font-semibold">${t.toolCode}</span>
+                <button
+                    type="button"
+                    onclick="openEditModal('${t.id}')"
+                    class="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-sky-300 transition"
+                >
+                    Edit
+                </button>
+                <button
+                    type="button"
+                    onclick="deleteToolRecord('${t.id}')"
+                    class="px-1.5 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 transition"
+                >
+                    Delete
+                </button>
+            </span>
+        `
+        )
+        .join("");
 }
 
 function renderAll() {
@@ -911,18 +1053,34 @@ function renderAll() {
                     <div class="space-y-2">
                         <div class="flex items-center justify-between gap-2">
                             <span class="font-mono text-sm font-bold text-amber-400">${t.toolCode}</span>
-                            ${getStatusBadge(t.status)}
+                            <div class="flex items-center gap-1.5">
+                                ${getStatusBadge(t.status)}
+                                <button
+                                    type="button"
+                                    onclick="openEditModal('${t.id}')"
+                                    class="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 transition"
+                                >
+                                    Edit
+                                </button>
+                                <button
+                                    type="button"
+                                    onclick="deleteToolRecord('${t.id}')"
+                                    class="px-2 py-0.5 rounded text-[11px] font-mono bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/35 transition"
+                                >
+                                    Delete
+                                </button>
+                            </div>
                         </div>
                         <h3 class="font-bold text-base text-white">${t.moldName}</h3>
-                        <p class="text-xs font-mono text-stone-400">Machine: ${t.machineNo} • Date: ${t.scheduledDate}</p>
+                        <p class="text-xs font-mono text-stone-400">Machine: ${t.machineNo} &bull; Date: ${t.scheduledDate}</p>
                         ${t.remarks ? `<p class="text-xs text-stone-300 bg-stone-900/80 border border-stone-800 rounded-lg p-2">Remark: ${t.remarks}</p>` : ""}
                         ${t.note ? `<p class="text-xs text-sky-300/90 bg-sky-950/30 border border-sky-800/40 rounded-lg p-2">${t.note}</p>` : ""}
                     </div>
 
                     <div class="space-y-2 pt-2 border-t border-stone-800/80">
                         <div class="flex items-center justify-between text-[11px] font-mono text-stone-400">
-                            <span>Before: ${t.beforePhoto ? "✔ Attached" : "—"}</span>
-                            <span>After: ${t.afterPhoto ? "✔ Attached" : "—"}</span>
+                            <span>Before: ${t.beforePhoto ? "&#10004; Attached" : "—"}</span>
+                            <span>After: ${t.afterPhoto ? "&#10004; Attached" : "—"}</span>
                         </div>
                         <div class="grid grid-cols-2 gap-2 pt-1">
                             <button type="button" onclick="openPhotoModal('${t.id}')" class="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-100 font-mono text-xs font-semibold transition">
@@ -962,9 +1120,17 @@ function renderAll() {
                     </td>
                     <td class="py-3 px-4 whitespace-nowrap">${getStatusBadge(t.status)}</td>
                     <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
-                        <button type="button" onclick="openPhotoModal('${t.id}')" class="text-xs font-mono underline text-amber-300 hover:text-amber-200">
-                            ${t.beforePhoto || t.afterPhoto ? "View / Edit" : "Upload"}
-                        </button>
+                        <div class="flex items-center gap-2 font-mono text-xs">
+                            <button type="button" onclick="openPhotoModal('${t.id}')" class="underline text-amber-300 hover:text-amber-200">
+                                ${t.beforePhoto || t.afterPhoto ? "Photos" : "Upload"}
+                            </button>
+                            <button type="button" onclick="openEditModal('${t.id}')" class="underline text-sky-300 hover:text-sky-200">
+                                Edit
+                            </button>
+                            <button type="button" onclick="deleteToolRecord('${t.id}')" class="underline text-rose-300 hover:text-rose-200">
+                                Delete
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `

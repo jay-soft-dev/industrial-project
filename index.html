@@ -3,94 +3,133 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ToolSync PM — Mold Reschedule &amp; Photo Audit</title>
+    <title>ToolSync PM — Injection Mold Preventive Maintenance & Rescheduler</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <link rel="stylesheet" href="style.css" />
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ["Space Grotesk", "system-ui", "sans-serif"],
+                        mono: ["JetBrains Mono", "monospace"]
+                    }
+                }
+            }
+        };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body class="bg-[#0b0d11] text-stone-100 min-h-screen antialiased selection:bg-amber-400 selection:text-stone-950">
-
-    <!-- Toast Notification -->
-    <div id="toast" class="fixed bottom-5 right-5 z-50 translate-y-20 opacity-0 transition-all duration-300 px-4 py-2.5 rounded-lg bg-amber-400 text-stone-950 font-mono text-xs font-bold shadow-2xl">
-        Ready
-    </div>
-
-    <!-- Top Header -->
-    <header class="sticky top-0 z-30 border-b border-stone-800/80 bg-[#0e1117]/90 backdrop-blur-md">
+    <!-- Top Bar -->
+    <header class="sticky top-0 z-30 border-b border-stone-800/80 bg-[#0b0d11]/90 backdrop-blur-md">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg border border-amber-400/50 bg-amber-400/10 flex items-center justify-center font-mono font-bold text-amber-400 text-sm">
-                    TS
+                <div class="w-9 h-9 rounded-lg bg-amber-400 text-stone-950 font-mono font-bold flex items-center justify-center text-sm shadow-sm">
+                    PM
                 </div>
                 <div>
-                    <h1 class="font-bold text-sm sm:text-base tracking-tight text-white">
-                        ToolSync PM — Injection Molding Control
-                    </h1>
-                    <p class="text-[11px] font-mono text-stone-400">
-                        Offline IndexedDB • Date-Bound PM Schedule • Before/After Audit Proof
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-lg font-bold tracking-tight">ToolSync PM</h1>
+                        <span class="text-[11px] font-mono uppercase px-2 py-0.5 rounded bg-stone-800 text-amber-300 border border-stone-700">
+                            12-Month Persistence
+                        </span>
+                    </div>
+                    <p class="text-xs text-stone-400 hidden sm:block">
+                        Injection mold PM tracker • Auto-reschedule on running machine • Edit, delete &amp; proof photos
                     </p>
                 </div>
             </div>
 
-            <!-- Action Controls -->
-            <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
-                <button id="open-ocr-modal-btn" type="button" class="px-3 py-2 rounded-lg border border-sky-400/50 bg-sky-400/10 hover:bg-sky-400/20 text-sky-300 font-semibold transition">
-                    📷 Import Plan Photo (OCR)
-                </button>
-                <button id="export-json-btn" type="button" class="px-3 py-2 rounded-lg border border-stone-700 bg-stone-900 hover:border-amber-400/60 text-amber-300 transition">
-                    Export Backup
-                </button>
-                <label class="px-3 py-2 rounded-lg border border-stone-700 bg-stone-900 hover:border-amber-400/60 text-stone-200 cursor-pointer transition">
-                    Import Backup
-                    <input id="import-json-input" type="file" accept="application/json" class="hidden" />
+            <!-- Date Picker & Actions -->
+            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                <label class="flex items-center gap-2 bg-[#141820] border border-stone-700/80 rounded-lg px-3 py-1.5 text-xs font-mono">
+                    <span class="text-stone-400">DATE</span>
+                    <input
+                        id="selected-date"
+                        type="date"
+                        class="bg-transparent text-amber-300 font-semibold focus:outline-none cursor-pointer"
+                    />
                 </label>
-                <button id="export-csv-btn" type="button" class="px-3 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold transition">
-                    CSV Report
+
+                <button
+                    id="jump-today-btn"
+                    type="button"
+                    class="px-3 py-1.5 rounded-lg text-xs font-mono bg-[#141820] hover:bg-stone-800 border border-stone-700/80 transition"
+                >
+                    Today
+                </button>
+
+                <button
+                    id="open-ocr-modal-btn"
+                    type="button"
+                    class="px-3 py-1.5 rounded-lg text-xs font-mono bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 font-semibold transition"
+                >
+                    Scan Plan Photo
+                </button>
+
+                <button
+                    id="open-add-tool-btn"
+                    type="button"
+                    class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-semibold bg-amber-400 hover:bg-amber-300 text-stone-950 transition"
+                >
+                    + Add Mold PM
                 </button>
             </div>
         </div>
     </header>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-8">
-
-        <!-- Date Selector & Summary Strip -->
-        <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center rounded-2xl border border-stone-800 bg-[#11151d] p-4 sm:p-5">
-            <div class="lg:col-span-5 flex flex-col sm:flex-row sm:items-center gap-3">
-                <label for="selected-date" class="text-xs font-mono uppercase tracking-wider text-amber-400">
-                    Active PM Date
-                </label>
-                <input id="selected-date" type="date" class="px-3 py-2 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-100 font-mono text-sm focus:outline-none focus:border-amber-400" />
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        <!-- Summary Strip -->
+        <section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4">
+                <div class="text-xs font-mono uppercase text-stone-400">Selected Date PM Progress</div>
+                <div id="stat-day-count" class="mt-1.5 text-2xl font-bold font-mono text-amber-400">0 / 3</div>
+                <div class="mt-1 text-xs text-stone-400">Target: 3 molds per day</div>
             </div>
 
-            <div class="lg:col-span-7 grid grid-cols-3 gap-3 text-center font-mono">
-                <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-2.5">
-                    <div id="stat-day-count" class="text-lg font-bold text-amber-400">0 / 3</div>
-                    <div class="text-[10px] text-stone-400 uppercase">Date PM Done</div>
-                </div>
-                <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-2.5">
-                    <div id="stat-swapped-count" class="text-lg font-bold text-sky-400">0</div>
-                    <div class="text-[10px] text-stone-400 uppercase">Swapped / Pushed</div>
-                </div>
-                <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-2.5">
-                    <div id="stat-month-tools" class="text-lg font-bold text-emerald-400">0</div>
-                    <div class="text-[10px] text-stone-400 uppercase">Month Molds</div>
-                </div>
+            <div class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4">
+                <div class="text-xs font-mono uppercase text-stone-400">Auto-Swapped / Rescheduled</div>
+                <div id="stat-swapped-count" class="mt-1.5 text-2xl font-bold font-mono text-sky-400">0</div>
+                <div class="mt-1 text-xs text-stone-400">Running machine conflicts shifted</div>
+            </div>
+
+            <div class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4">
+                <div class="text-xs font-mono uppercase text-stone-400">Scheduled This Month</div>
+                <div id="stat-month-tools" class="mt-1.5 text-2xl font-bold font-mono text-emerald-400">0</div>
+                <div class="mt-1 text-xs text-stone-400">Saved in browser storage</div>
             </div>
         </section>
 
-        <!-- 12-Month Auto Calendar + Clicked Date Status Box -->
-        <section class="rounded-2xl border border-stone-800 bg-[#11151d] p-4 sm:p-6 space-y-5">
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-stone-800 pb-4">
+        <!-- Full 12-Month Calendar Card -->
+        <section class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4 sm:p-5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <span class="text-[11px] font-mono uppercase tracking-widest text-amber-400">12-Month Auto Calendar</span>
-                    <h2 id="calendar-month-heading" class="text-lg sm:text-xl font-bold text-white">Month &amp; Year</h2>
+                    <h2 id="calendar-month-heading" class="text-base sm:text-lg font-bold">Calendar</h2>
+                    <p class="text-xs text-stone-400">
+                        Click any date across all 12 months to view, edit, delete, or add PM entries saved behind that date
+                    </p>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2 font-mono text-xs">
-                    <button id="prev-month-btn" type="button" class="px-3 py-2 rounded-lg border border-stone-700 bg-[#0b0d11] hover:border-amber-400 text-stone-200 transition">
-                        &larr; Prev Month
+                <div class="flex flex-wrap items-center gap-2">
+                    <button
+                        id="prev-month-btn"
+                        type="button"
+                        class="px-3 py-1.5 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono transition"
+                        title="Previous Month"
+                    >
+                        &larr; Prev
                     </button>
-                    <select id="calendar-month-select" aria-label="Select Month" class="px-3 py-2 rounded-lg border border-stone-700 bg-[#0b0d11] text-amber-300 focus:border-amber-400 focus:outline-none">
+
+                    <select
+                        id="calendar-month-select"
+                        aria-label="Select Month"
+                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-amber-300 focus:border-amber-400 focus:outline-none cursor-pointer"
+                    >
                         <option value="0">January</option>
                         <option value="1">February</option>
                         <option value="2">March</option>
@@ -104,25 +143,29 @@
                         <option value="10">November</option>
                         <option value="11">December</option>
                     </select>
-                    <select id="calendar-year-select" aria-label="Select Year" class="px-3 py-2 rounded-lg border border-stone-700 bg-[#0b0d11] text-stone-100 focus:border-amber-400 focus:outline-none">
-                        <!-- Populated dynamically in script.js -->
-                    </select>
-                    <button id="next-month-btn" type="button" class="px-3 py-2 rounded-lg border border-stone-700 bg-[#0b0d11] hover:border-amber-400 text-stone-200 transition">
-                        Next Month &rarr;
-                    </button>
-                    <button id="jump-today-btn" type="button" class="px-3 py-2 rounded-lg border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-semibold transition">
-                        Today
+
+                    <select
+                        id="calendar-year-select"
+                        aria-label="Select Year"
+                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-stone-200 focus:border-amber-400 focus:outline-none cursor-pointer"
+                    ></select>
+
+                    <button
+                        id="next-month-btn"
+                        type="button"
+                        class="px-3 py-1.5 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono transition"
+                        title="Next Month"
+                    >
+                        Next &rarr;
                     </button>
                 </div>
             </div>
 
-            <!-- 12-Month Quick Pills Strip -->
-            <div id="twelve-month-pills" class="flex gap-1.5 overflow-x-auto pb-1 font-mono text-[11px]">
-                <!-- 12 months rendered by script.js -->
-            </div>
+            <!-- 12-Month Quick Switcher Strip -->
+            <div id="twelve-month-pills" class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono"></div>
 
             <!-- Weekday Headers -->
-            <div class="grid grid-cols-7 gap-1.5 text-center font-mono text-[11px] uppercase text-stone-400 pt-1">
+            <div class="grid grid-cols-7 gap-1.5 sm:gap-2 text-center text-[11px] font-mono uppercase text-stone-400">
                 <div>Sun</div>
                 <div>Mon</div>
                 <div>Tue</div>
@@ -132,261 +175,469 @@
                 <div>Sat</div>
             </div>
 
-            <!-- Calendar Days Grid -->
-            <div id="calendar-days-grid" class="grid grid-cols-7 gap-1.5 sm:gap-2">
-                <!-- Calendar cells rendered by script.js -->
-            </div>
+            <!-- Days Grid -->
+            <div id="calendar-days-grid" class="grid grid-cols-7 gap-1.5 sm:gap-2"></div>
 
-            <!-- Clicked Date PM Status Banner (Shows whether PM is done on that date) -->
-            <div id="clicked-date-status-box" class="rounded-xl border border-stone-800 bg-[#0b0d11] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div class="space-y-1">
-                    <div id="clicked-date-badge" class="text-[11px] font-mono uppercase tracking-wider text-amber-400">
-                        Selected Date Status
+            <!-- Clicked Date Saved Status Banner -->
+            <div
+                id="clicked-date-banner"
+                class="rounded-xl border border-stone-800 bg-[#0b0d11] px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+            >
+                <div class="space-y-1 flex-1 min-w-[220px]">
+                    <div id="clicked-date-badge" class="text-[11px] font-mono uppercase text-amber-300">
+                        Selected Date Record
                     </div>
-                    <div id="clicked-date-summary" class="text-sm font-medium text-white">
-                        Click any date in the calendar to view its saved PM status.
+                    <div id="clicked-date-summary" class="text-xs sm:text-sm text-stone-200">
+                        Select a date to view saved PM status.
                     </div>
+                    <div id="clicked-date-quick-actions" class="flex flex-wrap items-center gap-2 pt-1"></div>
                 </div>
-                <button id="quick-add-for-selected-date-btn" type="button" class="shrink-0 px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono text-xs font-bold transition">
+                <button
+                    id="quick-add-for-selected-date-btn"
+                    type="button"
+                    class="px-3 py-1.5 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-mono font-semibold transition"
+                >
                     + Add PM on Selected Date
                 </button>
             </div>
         </section>
 
-        <!-- Add Tool / Plan Slot Form (Collapsible) -->
-        <section id="add-tool-panel" class="hidden rounded-2xl border border-stone-800 bg-[#11151d] p-5">
-            <h3 class="text-sm font-mono uppercase tracking-wider text-amber-400 mb-4">New Mold PM Entry (Saved Behind Selected Date)</h3>
+        <!-- Add Mold PM Form (Collapsible) -->
+        <section id="add-tool-panel" class="hidden rounded-2xl bg-[#11151d] border border-amber-400/40 p-5">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-bold text-amber-300">Add Mold to PM Schedule</h2>
+                <button
+                    type="button"
+                    onclick="document.getElementById('add-tool-panel').classList.add('hidden')"
+                    class="text-xs font-mono text-stone-400 hover:text-white"
+                >
+                    Close [X]
+                </button>
+            </div>
             <form id="add-tool-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                <input name="toolCode" type="text" required placeholder="Tool ID (e.g. IM-304)" class="px-3 py-2 rounded-lg bg-[#0b0d11] border border-stone-700 text-sm font-mono focus:border-amber-400 focus:outline-none" />
-                <input name="moldName" type="text" required placeholder="Mold Name (e.g. Housing Mold)" class="px-3 py-2 rounded-lg bg-[#0b0d11] border border-stone-700 text-sm focus:border-amber-400 focus:outline-none" />
-                <input name="machineNo" type="text" required placeholder="Machine (e.g. IMM-04)" class="px-3 py-2 rounded-lg bg-[#0b0d11] border border-stone-700 text-sm font-mono focus:border-amber-400 focus:outline-none" />
-                <input name="scheduledDate" id="new-tool-date" type="date" required class="px-3 py-2 rounded-lg bg-[#0b0d11] border border-stone-700 text-sm font-mono focus:border-amber-400 focus:outline-none" />
-                <button type="submit" class="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-sm transition">
+                <input
+                    type="text"
+                    name="toolCode"
+                    required
+                    placeholder="Tool ID (e.g. IM-108)"
+                    class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-amber-400 focus:outline-none"
+                />
+                <input
+                    type="text"
+                    name="moldName"
+                    required
+                    placeholder="Mold Name (e.g. Bumper Clip 4-Cav)"
+                    class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm focus:border-amber-400 focus:outline-none"
+                />
+                <input
+                    type="text"
+                    name="machineNo"
+                    required
+                    placeholder="Machine No (e.g. IMM-04)"
+                    class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-amber-400 focus:outline-none"
+                />
+                <input
+                    type="date"
+                    id="new-tool-date"
+                    name="scheduledDate"
+                    required
+                    class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono text-amber-300 focus:border-amber-400 focus:outline-none"
+                />
+                <button
+                    type="submit"
+                    class="bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono font-bold text-sm rounded-lg px-4 py-2 transition"
+                >
                     Save to Date
                 </button>
             </form>
         </section>
 
-        <!-- Daily Cards for Selected / Clicked Date -->
-        <section class="space-y-4">
+        <!-- Daily Mold PM Cards -->
+        <section class="space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                    <span class="text-[11px] font-mono uppercase tracking-widest text-amber-400">Selected Date PM Cards</span>
-                    <h2 id="daily-section-heading" class="text-xl font-bold text-white">Mold PM for Selected Date</h2>
-                </div>
-                <button id="open-add-tool-btn" type="button" class="px-4 py-2 rounded-lg border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-mono text-xs font-semibold transition">
-                    + Add Mold Slot
-                </button>
+                <h2 id="daily-section-heading" class="text-lg font-bold tracking-tight">Mold PM for Selected Date</h2>
+                <span class="text-xs font-mono text-stone-400">
+                    Edit details, delete entries, upload proof photos, or mark Running / Swap
+                </span>
             </div>
-
-            <div id="daily-cards-grid" class="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <!-- Cards rendered by script.js -->
-            </div>
+            <div id="daily-cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </section>
 
-        <!-- Full PM Schedule & Audit Log -->
-        <section class="grid grid-cols-1 xl:grid-cols-12 gap-6">
-
-            <!-- All PM Schedule (Connected to Calendar Dates) -->
-            <div class="xl:col-span-8 rounded-2xl border border-stone-800 bg-[#11151d] overflow-hidden">
+        <!-- Full Schedule & Audit Log -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Master Schedule Table -->
+            <div class="lg:col-span-2 rounded-2xl bg-[#11151d] border border-stone-800/90 overflow-hidden">
                 <div class="px-5 py-4 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                        <span class="text-[10px] font-mono uppercase tracking-wider text-amber-400">Connected with Calendar</span>
-                        <h2 id="pm-schedule-heading" class="font-bold text-base">PM Schedule</h2>
-                    </div>
-                    <div class="flex items-center gap-2 font-mono text-xs">
-                        <button id="filter-month-btn" type="button" class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300">
-                            Selected Month
+                    <h3 id="pm-schedule-heading" class="font-bold text-base">PM Schedule</h3>
+                    <div class="flex items-center gap-2 text-xs font-mono">
+                        <button
+                            id="filter-month-btn"
+                            type="button"
+                            class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300"
+                        >
+                            This Month
                         </button>
-                        <button id="filter-all-btn" type="button" class="px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400">
+                        <button
+                            id="filter-all-btn"
+                            type="button"
+                            class="px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400"
+                        >
                             All Dates
                         </button>
                     </div>
                 </div>
-                <div class="overflow-x-auto max-h-[520px]">
-                    <table class="w-full text-left border-collapse text-xs sm:text-sm">
-                        <thead class="sticky top-0 z-10">
-                            <tr class="border-b border-stone-800 bg-[#0d1016] font-mono text-[11px] uppercase text-stone-400">
-                                <th class="py-3 px-4">PM Date</th>
-                                <th class="py-3 px-4">Mold / Tool No</th>
-                                <th class="py-3 px-4">Details / Machine</th>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr class="border-b border-stone-800/80 text-[11px] font-mono uppercase text-stone-400 bg-[#0d1017]">
+                                <th class="py-3 px-4">Date</th>
+                                <th class="py-3 px-4">Tool ID</th>
+                                <th class="py-3 px-4">Mold &amp; Machine</th>
                                 <th class="py-3 px-4">Status</th>
-                                <th class="py-3 px-4">Photos</th>
+                                <th class="py-3 px-4">Edit &amp; Delete</th>
                             </tr>
                         </thead>
-                        <tbody id="schedule-table-body" class="divide-y divide-stone-800/70">
-                            <!-- Rows rendered by script.js -->
-                        </tbody>
+                        <tbody id="schedule-table-body" class="divide-y divide-stone-800/60"></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- Audit / Reschedule Log -->
-            <div class="xl:col-span-4 rounded-2xl border border-stone-800 bg-[#11151d] p-5 flex flex-col">
-                <div class="flex items-center justify-between border-b border-stone-800 pb-3 mb-4">
-                    <h2 class="font-bold text-base">Swap &amp; Production Log</h2>
-                    <span class="text-[11px] font-mono text-amber-400">AUDIT TRAIL</span>
+            <!-- Reschedule & Activity Log -->
+            <div class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-5 flex flex-col justify-between space-y-4">
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-bold text-base">Swap &amp; Activity Log</h3>
+                        <span class="text-[11px] font-mono text-stone-400">Audit Trail</span>
+                    </div>
+                    <div id="audit-log-list" class="space-y-2.5 max-h-[360px] overflow-y-auto pr-1 text-xs font-mono"></div>
                 </div>
-                <div id="audit-log-list" class="space-y-3 max-h-[460px] overflow-y-auto pr-1 text-xs font-mono">
-                    <!-- Logs rendered by script.js -->
+
+                <!-- Backup & Export -->
+                <div class="pt-4 border-t border-stone-800 space-y-2">
+                    <div class="text-[11px] font-mono uppercase text-stone-400">Backup &amp; Reports</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button
+                            id="export-json-btn"
+                            type="button"
+                            class="px-3 py-2 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono transition"
+                        >
+                            Export Backup
+                        </button>
+                        <label class="px-3 py-2 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono text-center cursor-pointer transition">
+                            Import Backup
+                            <input id="import-json-input" type="file" accept="application/json" class="hidden" />
+                        </label>
+                    </div>
+                    <button
+                        id="export-csv-btn"
+                        type="button"
+                        class="w-full px-3 py-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-mono font-semibold transition"
+                    >
+                        Download PM Report (CSV)
+                    </button>
                 </div>
             </div>
-
         </section>
-
     </main>
 
-    <!-- ========================================================= -->
-    <!-- MODAL 1: Monthly PM Plan Photo OCR & Date-wise Text Parser -->
-    <!-- ========================================================= -->
-    <div id="ocr-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-        <div class="w-full max-w-4xl rounded-2xl border border-stone-700 bg-[#12161f] p-5 sm:p-6 space-y-5 max-h-[94vh] overflow-y-auto">
-            <div class="flex items-start justify-between gap-4 border-b border-stone-800 pb-3">
+    <!-- Edit Mold PM Modal (Available Everywhere) -->
+    <div id="edit-tool-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div class="w-full max-w-xl rounded-2xl bg-[#11151d] border border-stone-700 p-5 sm:p-6 space-y-4 shadow-2xl">
+            <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="text-[11px] font-mono text-sky-400 uppercase">Monthly Plan Photo &rarr; Date-Wise Text Converter</div>
-                    <h3 class="text-lg font-bold text-white mt-0.5">Upload PM Plan Photo (80 Molds / Month • 3 Tools/Day)</h3>
+                    <span class="text-[11px] font-mono uppercase text-amber-400">Edit Saved Mold Record</span>
+                    <h3 id="edit-modal-heading" class="text-lg font-bold mt-0.5">Edit Mold PM</h3>
                 </div>
-                <button id="close-ocr-modal-btn" type="button" class="px-2.5 py-1 rounded border border-stone-700 text-stone-400 hover:text-white font-mono text-xs">
-                    Close
+                <button id="close-edit-modal-btn" type="button" class="text-stone-400 hover:text-white font-mono text-sm">
+                    Close [X]
                 </button>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                <!-- Left: Photo Upload & Preview -->
-                <div class="lg:col-span-5 space-y-3">
-                    <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-3.5 space-y-3">
-                        <label class="block w-full text-center px-4 py-2.5 rounded-lg bg-sky-400 hover:bg-sky-300 text-stone-950 font-mono text-xs font-bold cursor-pointer transition">
-                            📷 Select / Capture PM Plan Photo
-                            <input id="plan-photo-input" type="file" accept="image/*" class="hidden" />
-                        </label>
-
-                        <div class="aspect-[4/3] rounded-lg border border-dashed border-stone-700 bg-[#10141c] flex items-center justify-center overflow-hidden">
-                            <img id="plan-photo-preview" src="" alt="PM Plan Sheet" class="hidden w-full h-full object-contain" />
-                            <span id="plan-photo-placeholder" class="text-xs font-mono text-stone-500 text-center px-4">
-                                Upload photo of your monthly PM sheet / register
-                            </span>
-                        </div>
-
-                        <div id="ocr-progress-box" class="hidden space-y-1.5">
-                            <div class="flex justify-between text-[11px] font-mono text-sky-300">
-                                <span id="ocr-status-text">Reading text from image...</span>
-                                <span id="ocr-percent">0%</span>
-                            </div>
-                            <div class="w-full h-2 rounded-full bg-stone-800 overflow-hidden">
-                                <div id="ocr-progress-bar" class="h-full bg-sky-400 transition-all duration-200" style="width: 0%"></div>
-                            </div>
-                        </div>
+            <form id="edit-tool-form" class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-mono text-stone-400 mb-1">Tool ID</label>
+                        <input
+                            id="edit-tool-code"
+                            type="text"
+                            required
+                            class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-amber-400 focus:outline-none"
+                        />
                     </div>
-
-                    <!-- 80-Mold Math Helper -->
-                    <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-3.5 space-y-2.5 text-xs font-mono">
-                        <div class="text-amber-400 font-bold">80-MOLD MONTHLY MATH (3 / DAY)</div>
-                        <p class="text-[11px] text-stone-400 leading-relaxed">
-                            80 molds &divide; 3 molds/day = <span class="text-stone-200">26 days (3 molds) + Day 27 (2 molds)</span>.
-                        </p>
-                        <div class="flex items-center gap-2">
-                            <label for="plan-start-date" class="text-[11px] text-stone-400">Month Start:</label>
-                            <input id="plan-start-date" type="date" class="px-2.5 py-1.5 rounded bg-[#12161f] border border-stone-700 text-xs text-stone-100" />
-                        </div>
-                        <button id="auto-distribute-80-btn" type="button" class="w-full py-2 rounded-lg border border-amber-400/50 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-bold transition">
-                            Auto-Map Extracted Molds (3/Day)
-                        </button>
+                    <div>
+                        <label class="block text-xs font-mono text-stone-400 mb-1">Machine No</label>
+                        <input
+                            id="edit-machine-no"
+                            type="text"
+                            required
+                            class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-amber-400 focus:outline-none"
+                        />
                     </div>
                 </div>
 
-                <!-- Right: Date-Wise Text Format Output -->
-                <div class="lg:col-span-7 flex flex-col space-y-2.5">
-                    <div class="flex items-center justify-between">
-                        <label for="datewise-text-output" class="text-xs font-mono font-bold text-amber-300">
-                            DATE-WISE TEXT FORMAT (Editable Before Import)
-                        </label>
-                        <button id="copy-datewise-text-btn" type="button" class="px-2.5 py-1 rounded border border-stone-700 bg-stone-900 hover:border-amber-400 text-[11px] font-mono text-stone-200">
-                            Copy Text
-                        </button>
+                <div>
+                    <label class="block text-xs font-mono text-stone-400 mb-1">Mold Name</label>
+                    <input
+                        id="edit-mold-name"
+                        type="text"
+                        required
+                        class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm focus:border-amber-400 focus:outline-none"
+                    />
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-mono text-stone-400 mb-1">Scheduled Date</label>
+                        <input
+                            id="edit-scheduled-date"
+                            type="date"
+                            required
+                            class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono text-amber-300 focus:border-amber-400 focus:outline-none"
+                        />
                     </div>
-
-                    <textarea id="datewise-text-output" rows="13" placeholder="Format example:
-2026-11-01 | IM-101, IM-102, IM-103
-2026-11-02 | IM-104, IM-105, IM-106
-2026-11-03 | IM-107, IM-108, IM-109" class="w-full rounded-xl bg-[#0b0d11] border border-stone-700 p-3 font-mono text-xs text-stone-100 leading-relaxed focus:border-sky-400 focus:outline-none"></textarea>
-
-                    <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-                        <span id="parsed-summary-label" class="text-[11px] font-mono text-stone-400">
-                            0 molds ready to save
-                        </span>
-                        <div class="flex gap-2">
-                            <button id="import-replace-btn" type="button" class="px-4 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-mono text-xs font-bold transition">
-                                Save Schedule to Calendar Dates
-                            </button>
-                        </div>
+                    <div>
+                        <label class="block text-xs font-mono text-stone-400 mb-1">Status</label>
+                        <select
+                            id="edit-status"
+                            class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-amber-400 focus:outline-none"
+                        >
+                            <option value="Scheduled">Scheduled</option>
+                            <option value="PM Completed">PM Completed</option>
+                            <option value="Swapped / Rescheduled">Swapped / Rescheduled</option>
+                        </select>
                     </div>
                 </div>
-            </div>
+
+                <div>
+                    <label class="block text-xs font-mono text-stone-400 mb-1">PM / Maintenance Remarks</label>
+                    <textarea
+                        id="edit-remarks"
+                        rows="2"
+                        placeholder="Ejector pins greased, cooling lines flushed, slider checked..."
+                        class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm focus:border-amber-400 focus:outline-none"
+                    ></textarea>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-800">
+                    <button
+                        id="delete-from-edit-btn"
+                        type="button"
+                        class="px-3.5 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-mono text-xs font-semibold transition"
+                    >
+                        Delete Record
+                    </button>
+                    <div class="flex items-center gap-2">
+                        <button
+                            id="cancel-edit-btn"
+                            type="button"
+                            class="px-3.5 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 font-mono text-xs transition"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            class="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono text-xs font-bold transition"
+                        >
+                            Save Changes
+                        </button>
+                    </div>
+                </div>
+            </form>
         </div>
     </div>
 
-    <!-- ========================================================= -->
-    <!-- MODAL 2: Before / After Photo & PM Completion Modal        -->
-    <!-- ========================================================= -->
-    <div id="photo-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-        <div class="w-full max-w-2xl rounded-2xl border border-stone-700 bg-[#12161f] p-5 sm:p-6 space-y-5 max-h-[92vh] overflow-y-auto">
-            <div class="flex items-start justify-between gap-4 border-b border-stone-800 pb-3">
+    <!-- Before / After Photo & PM Completion Modal -->
+    <div id="photo-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div class="w-full max-w-2xl rounded-2xl bg-[#11151d] border border-stone-700 p-5 sm:p-6 space-y-5 shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div class="flex items-start justify-between gap-4">
                 <div>
-                    <div class="text-[11px] font-mono text-amber-400 uppercase">PM Evidence &amp; Completion</div>
-                    <h3 id="modal-tool-title" class="text-lg font-bold text-white mt-0.5">Tool PM Proof</h3>
+                    <span class="text-[11px] font-mono uppercase text-amber-400">Maintenance Photo Verification</span>
+                    <h3 id="modal-tool-title" class="text-lg font-bold mt-0.5">Mold PM Photos</h3>
                 </div>
-                <button id="close-modal-btn" type="button" class="px-2.5 py-1 rounded border border-stone-700 text-stone-400 hover:text-white font-mono text-xs">
-                    Close
+                <button id="close-modal-btn" type="button" class="text-stone-400 hover:text-white font-mono text-sm">
+                    Close [X]
                 </button>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <!-- Before Photo -->
-                <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-3 space-y-2.5">
+                <div class="space-y-2">
                     <div class="flex items-center justify-between">
-                        <span class="text-xs font-mono font-bold text-amber-300">1. BEFORE PM PHOTO</span>
-                        <label class="px-2.5 py-1 rounded bg-stone-800 hover:bg-stone-700 text-[11px] font-mono cursor-pointer">
-                            Capture / Pick
-                            <input id="before-photo-input" type="file" accept="image/*" capture="environment" class="hidden" />
-                        </label>
+                        <label class="block text-xs font-mono uppercase text-stone-300">Before PM Photo</label>
+                        <button
+                            id="remove-before-photo-btn"
+                            type="button"
+                            class="text-[11px] font-mono text-rose-300 hover:text-rose-200 underline"
+                        >
+                            Remove
+                        </button>
                     </div>
-                    <div class="aspect-video rounded-lg border border-dashed border-stone-700 bg-[#10141c] flex items-center justify-center overflow-hidden">
-                        <img id="before-photo-preview" src="" alt="Before PM" class="hidden w-full h-full object-cover" />
-                        <span id="before-photo-placeholder" class="text-[11px] font-mono text-stone-500">No Before Photo</span>
-                    </div>
+                    <label class="block cursor-pointer rounded-xl border border-dashed border-stone-700 hover:border-amber-400 bg-[#0b0d11] p-3 text-center transition">
+                        <input id="before-photo-input" type="file" accept="image/*" capture="environment" class="hidden" />
+                        <img id="before-photo-preview" alt="Before PM preview" class="hidden w-full h-44 object-cover rounded-lg mb-2" />
+                        <div id="before-photo-placeholder" class="py-8 text-xs font-mono text-stone-400">
+                            Tap to capture or upload BEFORE photo
+                        </div>
+                    </label>
                 </div>
 
                 <!-- After Photo -->
-                <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-3 space-y-2.5">
+                <div class="space-y-2">
                     <div class="flex items-center justify-between">
-                        <span class="text-xs font-mono font-bold text-emerald-400">2. AFTER PM PHOTO</span>
-                        <label class="px-2.5 py-1 rounded bg-stone-800 hover:bg-stone-700 text-[11px] font-mono cursor-pointer">
-                            Capture / Pick
-                            <input id="after-photo-input" type="file" accept="image/*" capture="environment" class="hidden" />
-                        </label>
+                        <label class="block text-xs font-mono uppercase text-stone-300">After PM Photo</label>
+                        <button
+                            id="remove-after-photo-btn"
+                            type="button"
+                            class="text-[11px] font-mono text-rose-300 hover:text-rose-200 underline"
+                        >
+                            Remove
+                        </button>
                     </div>
-                    <div class="aspect-video rounded-lg border border-dashed border-stone-700 bg-[#10141c] flex items-center justify-center overflow-hidden">
-                        <img id="after-photo-preview" src="" alt="After PM" class="hidden w-full h-full object-cover" />
-                        <span id="after-photo-placeholder" class="text-[11px] font-mono text-stone-500">No After Photo</span>
+                    <label class="block cursor-pointer rounded-xl border border-dashed border-stone-700 hover:border-emerald-400 bg-[#0b0d11] p-3 text-center transition">
+                        <input id="after-photo-input" type="file" accept="image/*" capture="environment" class="hidden" />
+                        <img id="after-photo-preview" alt="After PM preview" class="hidden w-full h-44 object-cover rounded-lg mb-2" />
+                        <div id="after-photo-placeholder" class="py-8 text-xs font-mono text-stone-400">
+                            Tap to capture or upload AFTER photo
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-mono uppercase text-stone-400 mb-1.5">PM Checklist / Remarks</label>
+                <textarea
+                    id="pm-remarks"
+                    rows="2"
+                    placeholder="Cleaned cavity/core, greased ejector pins, checked cooling lines..."
+                    class="w-full bg-[#0b0d11] border border-stone-700 rounded-xl px-3 py-2 text-sm focus:border-amber-400 focus:outline-none"
+                ></textarea>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-800">
+                <button
+                    id="delete-from-photo-btn"
+                    type="button"
+                    class="px-3.5 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-mono text-xs font-semibold transition"
+                >
+                    Delete Record
+                </button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button
+                        id="save-photos-only-btn"
+                        type="button"
+                        class="px-4 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 font-mono text-xs font-semibold transition"
+                    >
+                        Save Photos Only
+                    </button>
+                    <button
+                        id="complete-pm-btn"
+                        type="button"
+                        class="px-4 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-mono text-xs font-bold transition"
+                    >
+                        Mark PM Completed
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Plan Photo OCR & Date-Wise Format Converter Modal -->
+    <div id="ocr-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div class="w-full max-w-3xl rounded-2xl bg-[#11151d] border border-stone-700 p-5 sm:p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <span class="text-[11px] font-mono uppercase text-sky-400">PM Plan Photo &rarr; Date-Wise Converter</span>
+                    <h3 class="text-lg font-bold mt-0.5">Scan Plan Photo &amp; Bind Molds to Calendar Dates</h3>
+                    <p class="text-xs text-stone-400 mt-0.5">
+                        Upload your monthly PM plan photo or edit the <span class="font-mono text-amber-300">YYYY-MM-DD | MOLD-1, MOLD-2, MOLD-3</span> lines below, then save directly to calendar dates.
+                    </p>
+                </div>
+                <button id="close-ocr-modal-btn" type="button" class="text-stone-400 hover:text-white font-mono text-sm">
+                    Close [X]
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-2">
+                    <label class="block text-xs font-mono uppercase text-stone-300">1. Upload PM Plan Photo</label>
+                    <label class="block cursor-pointer rounded-xl border border-dashed border-stone-700 hover:border-sky-400 bg-[#0b0d11] p-3 text-center transition">
+                        <input id="plan-photo-input" type="file" accept="image/*" capture="environment" class="hidden" />
+                        <img id="plan-photo-preview" alt="PM plan photo preview" class="hidden w-full h-44 object-contain rounded-lg mb-2 bg-black/40" />
+                        <div id="plan-photo-placeholder" class="py-8 text-xs font-mono text-stone-400">
+                            Tap to select or capture PM plan photo
+                        </div>
+                    </label>
+                    <div id="ocr-progress-box" class="hidden space-y-1">
+                        <div class="flex justify-between text-[11px] font-mono text-sky-300">
+                            <span id="ocr-status-text">Scanning image...</span>
+                            <span id="ocr-percent">0%</span>
+                        </div>
+                        <div class="w-full h-1.5 rounded-full bg-stone-800 overflow-hidden">
+                            <div id="ocr-progress-bar" class="h-full bg-sky-400 transition-all duration-150" style="width: 0%"></div>
+                        </div>
                     </div>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <label class="block text-xs font-mono uppercase text-stone-300">2. Month Start Date</label>
+                        <button
+                            id="auto-distribute-80-btn"
+                            type="button"
+                            class="px-2.5 py-1 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-[11px] font-mono font-semibold transition"
+                        >
+                            Auto-Map 3 Molds/Day
+                        </button>
+                    </div>
+                    <input
+                        id="plan-start-date"
+                        type="date"
+                        class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-xs font-mono text-amber-300 focus:border-sky-400 focus:outline-none"
+                    />
+                    <p class="text-[11px] font-mono text-stone-400 leading-relaxed">
+                        Format: <span class="text-stone-200">2026-11-01 | MOLD-001, MOLD-002, MOLD-003</span>
+                    </p>
                 </div>
             </div>
 
             <div class="space-y-1.5">
-                <label for="pm-remarks" class="block text-xs font-mono text-stone-400">PM Remarks (Slider, Cooling Line, Cavity Check)</label>
-                <textarea id="pm-remarks" rows="2" placeholder="e.g. Cavity cleaned, slider lubricated, cooling line pressure checked..." class="w-full rounded-lg bg-[#0b0d11] border border-stone-700 p-2.5 text-sm text-stone-100 focus:border-amber-400 focus:outline-none"></textarea>
+                <div class="flex items-center justify-between gap-2">
+                    <label for="datewise-text-output" class="text-xs font-mono uppercase text-stone-300">
+                        3. Converted Date-Wise Schedule Text
+                    </label>
+                    <button
+                        id="copy-datewise-text-btn"
+                        type="button"
+                        class="text-xs font-mono text-sky-300 hover:text-sky-200 underline"
+                    >
+                        Copy Text
+                    </button>
+                </div>
+                <textarea
+                    id="datewise-text-output"
+                    rows="8"
+                    placeholder="2026-11-01 | IM-101, IM-102, IM-103&#10;2026-11-02 | IM-104, IM-105, IM-106"
+                    class="w-full bg-[#0b0d11] border border-stone-700 rounded-xl p-3 text-xs font-mono text-stone-100 leading-relaxed focus:border-sky-400 focus:outline-none"
+                ></textarea>
+                <div id="parsed-summary-label" class="text-[11px] font-mono text-stone-400">
+                    0 molds ready to save
+                </div>
             </div>
 
-            <div class="flex flex-wrap justify-end gap-2.5 pt-2">
-                <button id="save-photos-only-btn" type="button" class="px-4 py-2 rounded-lg border border-stone-700 bg-stone-900 hover:border-amber-400 text-xs font-mono text-stone-200">
-                    Save Photos Only
-                </button>
-                <button id="complete-pm-btn" type="button" class="px-5 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 text-xs font-mono font-bold">
-                    Mark PM Completed
+            <div class="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-stone-800">
+                <button
+                    id="import-replace-btn"
+                    type="button"
+                    class="px-4 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-mono text-xs font-bold transition"
+                >
+                    Save Schedule to Calendar Dates
                 </button>
             </div>
         </div>
     </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 translate-y-20 opacity-0 pointer-events-none transition-all duration-300 rounded-xl bg-stone-900 border border-amber-400/50 px-4 py-2.5 text-xs font-mono text-amber-200 shadow-xl"></div>
 
     <script src="script.js"></script>
 </body>
