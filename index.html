@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mold PM Control — Reschedule &amp; Photo Proof</title>
+    <title>ToolSync PM — Mold Reschedule &amp; Photo Audit</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <link rel="stylesheet" href="style.css" />
 </head>
 <body class="bg-[#0b0d11] text-stone-100 min-h-screen antialiased selection:bg-amber-400 selection:text-stone-950">
@@ -19,22 +20,25 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
                 <div class="w-9 h-9 rounded-lg border border-amber-400/50 bg-amber-400/10 flex items-center justify-center font-mono font-bold text-amber-400 text-sm">
-                    PM
+                    TS
                 </div>
                 <div>
                     <h1 class="font-bold text-sm sm:text-base tracking-tight text-white">
-                        Injection Molding — PM &amp; Swap Control
+                        ToolSync PM — Injection Molding Control
                     </h1>
                     <p class="text-[11px] font-mono text-stone-400">
-                        Offline IndexedDB • 3 Tools/Day • Before/After Audit Proof
+                        Offline IndexedDB • 80 Molds / 3 Per Day • Plan OCR &amp; Photo Proof
                     </p>
                 </div>
             </div>
 
             <!-- Action Controls -->
             <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+                <button id="open-ocr-modal-btn" type="button" class="px-3 py-2 rounded-lg border border-sky-400/50 bg-sky-400/10 hover:bg-sky-400/20 text-sky-300 font-semibold transition">
+                    📷 Import Plan Photo (OCR)
+                </button>
                 <button id="seed-demo-btn" type="button" class="px-3 py-2 rounded-lg border border-stone-700 bg-stone-900 hover:border-amber-400/60 text-stone-200 transition">
-                    Load Sample Month
+                    Load Sample
                 </button>
                 <button id="export-json-btn" type="button" class="px-3 py-2 rounded-lg border border-stone-700 bg-stone-900 hover:border-amber-400/60 text-amber-300 transition">
                     Export Backup
@@ -72,7 +76,7 @@
                 </div>
                 <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-2.5">
                     <div id="stat-total-tools" class="text-lg font-bold text-emerald-400">0</div>
-                    <div class="text-[10px] text-stone-400 uppercase">Planned Slots</div>
+                    <div class="text-[10px] text-stone-400 uppercase">Monthly Molds</div>
                 </div>
             </div>
         </section>
@@ -114,16 +118,16 @@
             <!-- Schedule Table -->
             <div class="xl:col-span-8 rounded-2xl border border-stone-800 bg-[#11151d] overflow-hidden">
                 <div class="px-5 py-4 border-b border-stone-800 flex items-center justify-between">
-                    <h2 class="font-bold text-base">Full Schedule &amp; Reschedule Status</h2>
+                    <h2 class="font-bold text-base">Full Monthly Schedule &amp; Reschedule Status</h2>
                     <span class="text-xs font-mono text-stone-400">Sorted by Date</span>
                 </div>
-                <div class="overflow-x-auto">
+                <div class="overflow-x-auto max-h-[520px]">
                     <table class="w-full text-left border-collapse text-xs sm:text-sm">
-                        <thead>
+                        <thead class="sticky top-0 z-10">
                             <tr class="border-b border-stone-800 bg-[#0d1016] font-mono text-[11px] uppercase text-stone-400">
-                                <th class="py-3 px-4">Date</th>
-                                <th class="py-3 px-4">Tool ID</th>
-                                <th class="py-3 px-4">Mold / Machine</th>
+                                <th class="py-3 px-4">PM Date</th>
+                                <th class="py-3 px-4">Mold / Tool No</th>
+                                <th class="py-3 px-4">Details / Machine</th>
                                 <th class="py-3 px-4">Status</th>
                                 <th class="py-3 px-4">Photos</th>
                             </tr>
@@ -141,7 +145,7 @@
                     <h2 class="font-bold text-base">Swap &amp; Production Log</h2>
                     <span class="text-[11px] font-mono text-amber-400">AUDIT TRAIL</span>
                 </div>
-                <div id="audit-log-list" class="space-y-3 max-h-[420px] overflow-y-auto pr-1 text-xs font-mono">
+                <div id="audit-log-list" class="space-y-3 max-h-[460px] overflow-y-auto pr-1 text-xs font-mono">
                     <!-- Logs rendered by script.js -->
                 </div>
             </div>
@@ -150,7 +154,98 @@
 
     </main>
 
-    <!-- Before / After Photo & PM Completion Modal -->
+    <!-- ========================================================= -->
+    <!-- MODAL 1: Monthly PM Plan Photo OCR & Date-wise Text Parser -->
+    <!-- ========================================================= -->
+    <div id="ocr-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+        <div class="w-full max-w-4xl rounded-2xl border border-stone-700 bg-[#12161f] p-5 sm:p-6 space-y-5 max-h-[94vh] overflow-y-auto">
+            <div class="flex items-start justify-between gap-4 border-b border-stone-800 pb-3">
+                <div>
+                    <div class="text-[11px] font-mono text-sky-400 uppercase">Monthly Plan Photo &rarr; Date-Wise Text Converter</div>
+                    <h3 class="text-lg font-bold text-white mt-0.5">Upload PM Plan Photo (80 Molds / Month • 3 Tools/Day)</h3>
+                </div>
+                <button id="close-ocr-modal-btn" type="button" class="px-2.5 py-1 rounded border border-stone-700 text-stone-400 hover:text-white font-mono text-xs">
+                    Close
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <!-- Left: Photo Upload & Preview -->
+                <div class="lg:col-span-5 space-y-3">
+                    <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-3.5 space-y-3">
+                        <label class="block w-full text-center px-4 py-2.5 rounded-lg bg-sky-400 hover:bg-sky-300 text-stone-950 font-mono text-xs font-bold cursor-pointer transition">
+                            📷 Select / Capture PM Plan Photo
+                            <input id="plan-photo-input" type="file" accept="image/*" class="hidden" />
+                        </label>
+
+                        <div class="aspect-[4/3] rounded-lg border border-dashed border-stone-700 bg-[#10141c] flex items-center justify-center overflow-hidden">
+                            <img id="plan-photo-preview" src="" alt="PM Plan Sheet" class="hidden w-full h-full object-contain" />
+                            <span id="plan-photo-placeholder" class="text-xs font-mono text-stone-500 text-center px-4">
+                                Upload photo of your monthly PM sheet / register
+                            </span>
+                        </div>
+
+                        <div id="ocr-progress-box" class="hidden space-y-1.5">
+                            <div class="flex justify-between text-[11px] font-mono text-sky-300">
+                                <span id="ocr-status-text">Reading text from image...</span>
+                                <span id="ocr-percent">0%</span>
+                            </div>
+                            <div class="w-full h-2 rounded-full bg-stone-800 overflow-hidden">
+                                <div id="ocr-progress-bar" class="h-full bg-sky-400 transition-all duration-200" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 80-Mold Math Helper -->
+                    <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-3.5 space-y-2.5 text-xs font-mono">
+                        <div class="text-amber-400 font-bold">80-MOLD MONTHLY MATH (3 / DAY)</div>
+                        <p class="text-[11px] text-stone-400 leading-relaxed">
+                            80 molds &divide; 3 molds/day = <span class="text-stone-200">26 days (3 molds) + Day 27 (2 molds)</span>.
+                        </p>
+                        <div class="flex items-center gap-2">
+                            <label for="plan-start-date" class="text-[11px] text-stone-400">Month Start:</label>
+                            <input id="plan-start-date" type="date" class="px-2.5 py-1.5 rounded bg-[#12161f] border border-stone-700 text-xs text-stone-100" />
+                        </div>
+                        <button id="auto-distribute-80-btn" type="button" class="w-full py-2 rounded-lg border border-amber-400/50 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-bold transition">
+                            Auto-Map Extracted Molds (3/Day)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right: Date-Wise Text Format Output -->
+                <div class="lg:col-span-7 flex flex-col space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <label for="datewise-text-output" class="text-xs font-mono font-bold text-amber-300">
+                            DATE-WISE TEXT FORMAT (Editable Before Import)
+                        </label>
+                        <button id="copy-datewise-text-btn" type="button" class="px-2.5 py-1 rounded border border-stone-700 bg-stone-900 hover:border-amber-400 text-[11px] font-mono text-stone-200">
+                            Copy Text
+                        </button>
+                    </div>
+
+                    <textarea id="datewise-text-output" rows="13" placeholder="Format example:
+2026-11-01 | IM-101, IM-102, IM-103
+2026-11-02 | IM-104, IM-105, IM-106
+2026-11-03 | IM-107, IM-108, IM-109" class="w-full rounded-xl bg-[#0b0d11] border border-stone-700 p-3 font-mono text-xs text-stone-100 leading-relaxed focus:border-sky-400 focus:outline-none"></textarea>
+
+                    <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <span id="parsed-summary-label" class="text-[11px] font-mono text-stone-400">
+                            0 molds ready to import
+                        </span>
+                        <div class="flex gap-2">
+                            <button id="import-replace-btn" type="button" class="px-4 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-mono text-xs font-bold transition">
+                                Load Into ToolSync PM
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- MODAL 2: Before / After Photo & PM Completion Modal        -->
+    <!-- ========================================================= -->
     <div id="photo-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
         <div class="w-full max-w-2xl rounded-2xl border border-stone-700 bg-[#12161f] p-5 sm:p-6 space-y-5 max-h-[92vh] overflow-y-auto">
             <div class="flex items-start justify-between gap-4 border-b border-stone-800 pb-3">
@@ -159,7 +254,7 @@
                     <h3 id="modal-tool-title" class="text-lg font-bold text-white mt-0.5">Tool PM Proof</h3>
                 </div>
                 <button id="close-modal-btn" type="button" class="px-2.5 py-1 rounded border border-stone-700 text-stone-400 hover:text-white font-mono text-xs">
-                    ESC / Close
+                    Close
                 </button>
             </div>
 
