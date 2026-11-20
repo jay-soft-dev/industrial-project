@@ -25,9 +25,9 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body class="bg-[#0b0d11] text-stone-100 min-h-screen antialiased selection:bg-amber-400 selection:text-stone-950">
-    <!-- Top Bar -->
-    <header class="sticky top-0 z-30 border-b border-stone-800/80 bg-[#0b0d11]/90 backdrop-blur-md">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+    <!-- Top Bar with All-Months Mold Search & Date Search -->
+    <header class="sticky top-0 z-30 border-b border-stone-800/80 bg-[#0b0d11]/95 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
                 <div class="w-9 h-9 rounded-lg bg-amber-400 text-stone-950 font-mono font-bold flex items-center justify-center text-sm shadow-sm">
                     PM
@@ -36,19 +36,46 @@
                     <div class="flex items-center gap-2">
                         <h1 class="text-lg font-bold tracking-tight">ToolSync PM</h1>
                         <span class="text-[11px] font-mono uppercase px-2 py-0.5 rounded bg-stone-800 text-amber-300 border border-stone-700">
-                            12-Month Persistence
+                            All Months Sync
                         </span>
                     </div>
-                    <p class="text-xs text-stone-400 hidden sm:block">
-                        Injection mold PM tracker • Auto-reschedule on running machine • Edit, delete &amp; proof photos
-                    </p>
                 </div>
             </div>
 
-            <!-- Date Picker & Actions -->
-            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-                <label class="flex items-center gap-2 bg-[#141820] border border-stone-700/80 rounded-lg px-3 py-1.5 text-xs font-mono">
-                    <span class="text-stone-400">DATE</span>
+            <!-- Header Mold Search (All 12 Months) + Date Search (All 12 Months) -->
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="relative flex items-center bg-[#181d28] border border-amber-400/60 focus-within:border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-mono">
+                    <label for="header-mold-search" class="text-amber-300 mr-1.5 font-bold cursor-pointer">
+                        MOLD SEARCH
+                    </label>
+                    <input
+                        id="header-mold-search"
+                        type="text"
+                        autocomplete="off"
+                        placeholder="Type ID, Mold, IMM (All 12 Months)..."
+                        class="w-48 sm:w-60 bg-transparent text-white placeholder-stone-400 focus:outline-none"
+                    />
+                    <button
+                        id="clear-mold-search-btn"
+                        type="button"
+                        title="Clear mold search"
+                        class="hidden ml-1 px-1.5 py-0.5 rounded bg-stone-800 text-amber-300 hover:text-white"
+                    >
+                        &times;
+                    </button>
+
+                    <!-- Live Dropdown Results -->
+                    <div
+                        id="mold-search-results"
+                        class="hidden fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-1.5 z-50 w-auto sm:w-[440px] max-h-80 overflow-y-auto rounded-xl bg-[#11151d] border border-amber-400/60 shadow-2xl divide-y divide-stone-800/80"
+                    ></div>
+                </div>
+
+                <label
+                    title="Search or jump to any date across all 12 months"
+                    class="flex items-center gap-1.5 bg-[#181d28] border border-sky-400/50 focus-within:border-sky-300 rounded-lg px-2.5 py-1.5 text-xs font-mono"
+                >
+                    <span class="text-sky-300 font-bold">DATE SEARCH</span>
                     <input
                         id="selected-date"
                         type="date"
@@ -59,7 +86,7 @@
                 <button
                     id="jump-today-btn"
                     type="button"
-                    class="px-3 py-1.5 rounded-lg text-xs font-mono bg-[#141820] hover:bg-stone-800 border border-stone-700/80 transition"
+                    class="px-2.5 py-1.5 rounded-lg text-xs font-mono bg-[#141820] hover:bg-stone-800 border border-stone-700/80 transition"
                 >
                     Today
                 </button>
@@ -67,23 +94,41 @@
                 <button
                     id="open-ocr-modal-btn"
                     type="button"
-                    class="px-3 py-1.5 rounded-lg text-xs font-mono bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 font-semibold transition"
+                    class="px-2.5 py-1.5 rounded-lg text-xs font-mono bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 font-semibold transition"
                 >
-                    Scan Plan Photo
+                    Scan Plan
                 </button>
 
                 <button
                     id="open-add-tool-btn"
                     type="button"
-                    class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-semibold bg-amber-400 hover:bg-amber-300 text-stone-950 transition"
+                    class="px-3 py-1.5 rounded-lg text-xs font-mono font-semibold bg-amber-400 hover:bg-amber-300 text-stone-950 transition"
                 >
-                    + Add Mold PM
+                    + Add PM
                 </button>
             </div>
         </div>
     </header>
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        <!-- Active All-Months Mold Search Results Card (Always visible on page when searching) -->
+        <section
+            id="active-search-banner"
+            class="hidden rounded-2xl border border-amber-400/50 bg-[#141822] p-4 space-y-3"
+        >
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                <div id="active-search-text" class="text-amber-200 font-semibold"></div>
+                <button
+                    id="reset-all-search-btn"
+                    type="button"
+                    class="px-3 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-600 text-stone-100 transition"
+                >
+                    Clear Search
+                </button>
+            </div>
+            <div id="search-matches-inline-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5"></div>
+        </section>
+
         <!-- Summary Strip -->
         <section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4">
@@ -282,7 +327,7 @@
                             type="button"
                             class="px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400"
                         >
-                            All Dates
+                            All Months
                         </button>
                     </div>
                 </div>
@@ -340,7 +385,7 @@
         </section>
     </main>
 
-    <!-- Edit Mold PM Modal (Available Everywhere) -->
+    <!-- Edit Mold PM Modal -->
     <div id="edit-tool-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
         <div class="w-full max-w-xl rounded-2xl bg-[#11151d] border border-stone-700 p-5 sm:p-6 space-y-4 shadow-2xl">
             <div class="flex items-start justify-between gap-3">
@@ -460,7 +505,6 @@
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <!-- Before Photo -->
                 <div class="space-y-2">
                     <div class="flex items-center justify-between">
                         <label class="block text-xs font-mono uppercase text-stone-300">Before PM Photo</label>
@@ -481,7 +525,6 @@
                     </label>
                 </div>
 
-                <!-- After Photo -->
                 <div class="space-y-2">
                     <div class="flex items-center justify-between">
                         <label class="block text-xs font-mono uppercase text-stone-300">After PM Photo</label>
@@ -548,9 +591,6 @@
                 <div>
                     <span class="text-[11px] font-mono uppercase text-sky-400">PM Plan Photo &rarr; Date-Wise Converter</span>
                     <h3 class="text-lg font-bold mt-0.5">Scan Plan Photo &amp; Bind Molds to Calendar Dates</h3>
-                    <p class="text-xs text-stone-400 mt-0.5">
-                        Upload your monthly PM plan photo or edit the <span class="font-mono text-amber-300">YYYY-MM-DD | MOLD-1, MOLD-2, MOLD-3</span> lines below, then save directly to calendar dates.
-                    </p>
                 </div>
                 <button id="close-ocr-modal-btn" type="button" class="text-stone-400 hover:text-white font-mono text-sm">
                     Close [X]
@@ -594,9 +634,6 @@
                         type="date"
                         class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-xs font-mono text-amber-300 focus:border-sky-400 focus:outline-none"
                     />
-                    <p class="text-[11px] font-mono text-stone-400 leading-relaxed">
-                        Format: <span class="text-stone-200">2026-11-01 | MOLD-001, MOLD-002, MOLD-003</span>
-                    </p>
                 </div>
             </div>
 

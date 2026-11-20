@@ -244,6 +244,7 @@ let allTools = [];
 let allLogs = [];
 let activeDate = todayISO;
 let tableShowAllDates = false;
+let moldSearchQuery = "";
 
 const [initY, initM] = todayISO.split("-").map(Number);
 let calYear = initY;
@@ -260,7 +261,15 @@ const monthSelect = document.getElementById("calendar-month-select");
 const yearSelect = document.getElementById("calendar-year-select");
 const addPanel = document.getElementById("add-tool-panel");
 
+const headerMoldSearchInput = document.getElementById("header-mold-search");
+const clearMoldSearchBtn = document.getElementById("clear-mold-search-btn");
+const moldSearchResultsEl = document.getElementById("mold-search-results");
+const activeSearchBanner = document.getElementById("active-search-banner");
+const activeSearchText = document.getElementById("active-search-text");
+const searchMatchesInlineList = document.getElementById("search-matches-inline-list");
+
 function populateYearOptions(centerYear) {
+    if (!yearSelect) return;
     const startYear = centerYear - 5;
     const endYear = centerYear + 2;
     yearSelect.innerHTML = "";
@@ -274,8 +283,128 @@ function populateYearOptions(centerYear) {
 }
 
 populateYearOptions(initY);
-dateInput.value = activeDate;
-monthSelect.value = String(calMonth);
+if (dateInput) dateInput.value = activeDate;
+if (monthSelect) monthSelect.value = String(calMonth);
+
+// =========================================================
+// All-Months Mold Search (Header Connected to All 12 Months)
+// =========================================================
+function getMatchingMoldsAcrossAllMonths(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return allTools
+        .filter((t) => {
+            const hay = `${t.toolCode || ""} ${t.moldName || ""} ${t.machineNo || ""} ${t.scheduledDate || ""} ${t.status || ""} ${t.remarks || ""}`.toLowerCase();
+            return hay.includes(q);
+        })
+        .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+}
+
+function jumpToToolAcrossMonths(toolId) {
+    const found = allTools.find((t) => t.id === toolId);
+    if (!found) return;
+    if (moldSearchResultsEl) moldSearchResultsEl.classList.add("hidden");
+    selectCalendarDate(found.scheduledDate);
+    showToast(`Jumped to ${found.toolCode} (${found.scheduledDate})`);
+}
+
+function renderHeaderMoldSearchDropdown() {
+    if (!clearMoldSearchBtn || !moldSearchResultsEl) return;
+    const q = moldSearchQuery.trim();
+    clearMoldSearchBtn.classList.toggle("hidden", q.length === 0);
+
+    if (!q) {
+        moldSearchResultsEl.classList.add("hidden");
+        moldSearchResultsEl.innerHTML = "";
+        return;
+    }
+
+    const matches = getMatchingMoldsAcrossAllMonths(q);
+    moldSearchResultsEl.classList.remove("hidden");
+
+    if (matches.length === 0) {
+        moldSearchResultsEl.innerHTML = `
+            <div class="p-4 text-xs font-mono text-stone-400">
+                No mold matching "<span class="text-amber-300">${q}</span>" across any month.
+            </div>
+        `;
+        return;
+    }
+
+    moldSearchResultsEl.innerHTML = `
+        <div class="px-3 py-2 bg-[#0d1017] text-[10px] font-mono uppercase text-amber-300 flex items-center justify-between">
+            <span>All Months Match (${matches.length})</span>
+            <span class="text-stone-400">Click to jump</span>
+        </div>
+        ${matches
+            .map((t) => {
+                const [y, m] = (t.scheduledDate || "").split("-").map(Number);
+                const mLabel = m ? `${MONTH_SHORT[m - 1]} ${y}` : t.scheduledDate;
+                return `
+                    <button
+                        type="button"
+                        onclick="jumpToToolAcrossMonths('${t.id}')"
+                        class="w-full px-3.5 py-2.5 text-left hover:bg-stone-800/70 transition flex items-center justify-between gap-3"
+                    >
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2 font-mono text-xs">
+                                <span class="font-bold text-amber-400">${t.toolCode}</span>
+                                <span class="px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-300 text-[10px]">${mLabel}</span>
+                                <span class="text-stone-400 text-[11px]">${t.scheduledDate}</span>
+                            </div>
+                            <div class="text-xs text-stone-100 truncate mt-0.5">${t.moldName} • <span class="font-mono text-stone-400">${t.machineNo}</span></div>
+                        </div>
+                        <span class="text-[11px] font-mono text-amber-300 shrink-0">Go &rarr;</span>
+                    </button>
+                `;
+            })
+            .join("")}
+    `;
+}
+
+function clearAllMoldSearch() {
+    moldSearchQuery = "";
+    if (headerMoldSearchInput) headerMoldSearchInput.value = "";
+    if (clearMoldSearchBtn) clearMoldSearchBtn.classList.add("hidden");
+    if (moldSearchResultsEl) {
+        moldSearchResultsEl.classList.add("hidden");
+        moldSearchResultsEl.innerHTML = "";
+    }
+    renderAll();
+}
+
+if (headerMoldSearchInput) {
+    headerMoldSearchInput.addEventListener("input", (e) => {
+        moldSearchQuery = e.target.value;
+        renderHeaderMoldSearchDropdown();
+        renderAll();
+    });
+
+    headerMoldSearchInput.addEventListener("focus", () => {
+        if (moldSearchQuery.trim()) {
+            renderHeaderMoldSearchDropdown();
+        }
+    });
+}
+
+if (clearMoldSearchBtn) {
+    clearMoldSearchBtn.addEventListener("click", clearAllMoldSearch);
+}
+
+const resetAllSearchBtn = document.getElementById("reset-all-search-btn");
+if (resetAllSearchBtn) {
+    resetAllSearchBtn.addEventListener("click", clearAllMoldSearch);
+}
+
+document.addEventListener("click", (e) => {
+    if (
+        moldSearchResultsEl &&
+        !e.target.closest("#header-mold-search") &&
+        !e.target.closest("#mold-search-results")
+    ) {
+        moldSearchResultsEl.classList.add("hidden");
+    }
+});
 
 async function addAuditLog(message) {
     const entry = {
@@ -288,7 +417,6 @@ async function addAuditLog(message) {
     writeLocalStorageMirror(allTools, allLogs);
 }
 
-// Global Edit & Delete Actions (Available from Clicked Date Banner, Cards, Table, and Modals)
 async function deleteToolRecord(toolId, skipConfirm = false) {
     const target = allTools.find((t) => t.id === toolId);
     if (!target) return false;
@@ -313,7 +441,6 @@ async function deleteToolRecord(toolId, skipConfirm = false) {
     return true;
 }
 
-// Edit Modal Logic
 const editModal = document.getElementById("edit-tool-modal");
 const editModalHeading = document.getElementById("edit-modal-heading");
 const editToolForm = document.getElementById("edit-tool-form");
@@ -384,7 +511,6 @@ editToolForm.addEventListener("submit", async (e) => {
     showToast(`Updated ${tool.toolCode}`);
 });
 
-// Auto-Swap / Reschedule when tool is running on machine
 async function handleMachineRunning(toolId) {
     const targetTool = allTools.find((t) => t.id === toolId);
     if (!targetTool) return;
@@ -426,25 +552,26 @@ async function handleMachineRunning(toolId) {
     await refreshAll();
 }
 
-// =========================================================
-// 12-Month Calendar Navigation
-// =========================================================
 function setCalendarMonth(year, monthIndex, selectFirstDayIfOutside = false) {
     const normalized = new Date(year, monthIndex, 1);
     calYear = normalized.getFullYear();
     calMonth = normalized.getMonth();
 
-    const existingYears = Array.from(yearSelect.options).map((o) => Number(o.value));
-    if (!existingYears.includes(calYear)) {
-        populateYearOptions(calYear);
+    if (yearSelect) {
+        const existingYears = Array.from(yearSelect.options).map((o) => Number(o.value));
+        if (!existingYears.includes(calYear)) {
+            populateYearOptions(calYear);
+        }
+        yearSelect.value = String(calYear);
     }
-    yearSelect.value = String(calYear);
-    monthSelect.value = String(calMonth);
+    if (monthSelect) {
+        monthSelect.value = String(calMonth);
+    }
 
     const ymPrefix = getYearMonthPrefix(calYear, calMonth);
     if (selectFirstDayIfOutside && !activeDate.startsWith(ymPrefix)) {
         activeDate = `${ymPrefix}-01`;
-        dateInput.value = activeDate;
+        if (dateInput) dateInput.value = activeDate;
     }
 
     renderAll();
@@ -458,24 +585,25 @@ document.getElementById("next-month-btn").addEventListener("click", () => {
     setCalendarMonth(calYear, calMonth + 1, true);
 });
 
-monthSelect.addEventListener("change", (e) => {
-    setCalendarMonth(calYear, Number(e.target.value), true);
-});
+if (monthSelect) {
+    monthSelect.addEventListener("change", (e) => {
+        setCalendarMonth(calYear, Number(e.target.value), true);
+    });
+}
 
-yearSelect.addEventListener("change", (e) => {
-    setCalendarMonth(Number(e.target.value), calMonth, true);
-});
+if (yearSelect) {
+    yearSelect.addEventListener("change", (e) => {
+        setCalendarMonth(Number(e.target.value), calMonth, true);
+    });
+}
 
 document.getElementById("jump-today-btn").addEventListener("click", () => {
     activeDate = todayISO;
-    dateInput.value = activeDate;
+    if (dateInput) dateInput.value = activeDate;
     const [y, m] = todayISO.split("-").map(Number);
     setCalendarMonth(y, m - 1, false);
 });
 
-// =========================================================
-// Plan Photo OCR & Date-Wise Text Format Converter
-// =========================================================
 const ocrModal = document.getElementById("ocr-modal");
 const planPhotoInput = document.getElementById("plan-photo-input");
 const planPhotoPreview = document.getElementById("plan-photo-preview");
@@ -715,7 +843,7 @@ document.getElementById("import-replace-btn").addEventListener("click", async ()
     }
 
     activeDate = parsed[0].dateStr;
-    dateInput.value = activeDate;
+    if (dateInput) dateInput.value = activeDate;
     const [y, m] = activeDate.split("-").map(Number);
     setCalendarMonth(y, m - 1, false);
 
@@ -728,9 +856,6 @@ document.getElementById("import-replace-btn").addEventListener("click", async ()
     showToast(`Saved ${parsed.length} molds to calendar dates`);
 });
 
-// =========================================================
-// Photo & PM Completion Modal
-// =========================================================
 const photoModal = document.getElementById("photo-modal");
 const modalTitle = document.getElementById("modal-tool-title");
 const beforeInput = document.getElementById("before-photo-input");
@@ -841,9 +966,6 @@ document.getElementById("close-modal-btn").addEventListener("click", closePhotoM
 document.getElementById("save-photos-only-btn").addEventListener("click", () => saveModalChanges(false));
 document.getElementById("complete-pm-btn").addEventListener("click", () => saveModalChanges(true));
 
-// =========================================================
-// Rendering UI
-// =========================================================
 function getStatusBadge(status) {
     if (status === "PM Completed") {
         return `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">PM Completed</span>`;
@@ -856,16 +978,18 @@ function getStatusBadge(status) {
 
 function selectCalendarDate(dateStr) {
     activeDate = dateStr;
-    dateInput.value = dateStr;
+    if (dateInput) dateInput.value = dateStr;
     const [y, m] = dateStr.split("-").map(Number);
     calYear = y;
     calMonth = m - 1;
-    monthSelect.value = String(calMonth);
-    const existingYears = Array.from(yearSelect.options).map((o) => Number(o.value));
-    if (!existingYears.includes(calYear)) {
-        populateYearOptions(calYear);
+    if (monthSelect) monthSelect.value = String(calMonth);
+    if (yearSelect) {
+        const existingYears = Array.from(yearSelect.options).map((o) => Number(o.value));
+        if (!existingYears.includes(calYear)) {
+            populateYearOptions(calYear);
+        }
+        yearSelect.value = String(calYear);
     }
-    yearSelect.value = String(calYear);
     renderAll();
 }
 
@@ -1024,6 +1148,45 @@ function renderClickedDateStatusBanner(selectedDayTools) {
 function renderAll() {
     renderCalendarGrid();
 
+    const q = moldSearchQuery.trim();
+    const allMonthMatches = q ? getMatchingMoldsAcrossAllMonths(q) : [];
+
+    if (activeSearchBanner && activeSearchText && searchMatchesInlineList) {
+        if (q) {
+            activeSearchBanner.classList.remove("hidden");
+            activeSearchText.textContent = `All 12 Months Mold Search ("${q}") — ${allMonthMatches.length} found`;
+            searchMatchesInlineList.innerHTML = allMonthMatches.length
+                ? allMonthMatches
+                      .map((t) => {
+                          const [y, m] = (t.scheduledDate || "").split("-").map(Number);
+                          const mLabel = m ? `${MONTH_SHORT[m - 1]} ${y}` : t.scheduledDate;
+                          return `
+                              <button
+                                  type="button"
+                                  onclick="jumpToToolAcrossMonths('${t.id}')"
+                                  class="rounded-xl border border-stone-800 bg-[#0b0d11] hover:border-amber-400 p-3 text-left transition flex items-center justify-between gap-2"
+                              >
+                                  <div class="min-w-0">
+                                      <div class="font-mono text-xs flex items-center gap-1.5">
+                                          <span class="font-bold text-amber-400">${t.toolCode}</span>
+                                          <span class="px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-300 text-[10px]">${mLabel}</span>
+                                          <span class="text-stone-400 text-[11px]">${t.scheduledDate}</span>
+                                      </div>
+                                      <div class="text-xs text-stone-200 truncate mt-0.5">${t.moldName} (${t.machineNo})</div>
+                                  </div>
+                                  <span class="text-[11px] font-mono text-amber-300 shrink-0">Open &rarr;</span>
+                              </button>
+                          `;
+                      })
+                      .join("")
+                : `<div class="col-span-full text-xs font-mono text-stone-400">No mold found across any month.</div>`;
+        } else {
+            activeSearchBanner.classList.add("hidden");
+            activeSearchText.textContent = "";
+            searchMatchesInlineList.innerHTML = "";
+        }
+    }
+
     const ymPrefix = getYearMonthPrefix(calYear, calMonth);
     const monthTools = allTools.filter((t) => t.scheduledDate.startsWith(ymPrefix));
     const selectedDayTools = allTools.filter((t) => t.scheduledDate === activeDate);
@@ -1097,11 +1260,17 @@ function renderAll() {
             .join("");
     }
 
-    const rowsToShow = tableShowAllDates ? [...allTools] : [...monthTools];
+    const rowsToShow = q
+        ? [...allMonthMatches]
+        : tableShowAllDates
+        ? [...allTools]
+        : [...monthTools];
     rowsToShow.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
 
-    document.getElementById("pm-schedule-heading").textContent = tableShowAllDates
-        ? `PM Schedule — All Dates (${rowsToShow.length})`
+    document.getElementById("pm-schedule-heading").textContent = q
+        ? `Search Results Across All Months ("${q}") (${rowsToShow.length})`
+        : tableShowAllDates
+        ? `PM Schedule — All Months (${rowsToShow.length})`
         : `PM Schedule — ${MONTH_NAMES[calMonth]} ${calYear} (${rowsToShow.length})`;
 
     const tableBody = document.getElementById("schedule-table-body");
@@ -1177,15 +1346,18 @@ async function refreshAll() {
     allLogs = idbLogs.sort((a, b) => b.id.localeCompare(a.id));
     writeLocalStorageMirror(allTools, allLogs);
     renderAll();
+    if (moldSearchQuery.trim()) {
+        renderHeaderMoldSearchDropdown();
+    }
 }
 
-// =========================================================
-// Events: Date Change, Add Tool, Table Filter, Backup / CSV
-// =========================================================
-dateInput.addEventListener("change", (e) => {
-    const val = e.target.value || todayISO;
-    selectCalendarDate(val);
-});
+if (dateInput) {
+    dateInput.addEventListener("change", (e) => {
+        const val = e.target.value || todayISO;
+        selectCalendarDate(val);
+        showToast(`Jumped to ${val}`);
+    });
+}
 
 function openAddFormForActiveDate() {
     document.getElementById("new-tool-date").value = activeDate;
