@@ -1,16 +1,15 @@
 // =========================================================
 // Dual Persistence Setup (IndexedDB + localStorage Fallback)
-// Prevents data loss on page refresh across file:// or strict browsers
 // =========================================================
 const DB_NAME = "ToolSyncPMDB";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_TOOLS = "pmTools";
 const STORE_LOGS = "auditLogs";
-const LS_BACKUP_KEY = "ToolSyncPM_Persistent_State_v1";
+const LS_BACKUP_KEY = "ToolSyncPM_Persistent_State_v2";
+const CLEAN_SLATE_FLAG = "ToolSyncPM_CleanStart_Done_v1";
 
 function writeLocalStorageMirror(tools, logs) {
     try {
-        // Keep photos if within safe quota; if quota exceeds, keep text/schedule records safely
         const slimTools = tools.map((t) => ({
             ...t,
             beforePhoto: t.beforePhoto || null,
@@ -23,7 +22,6 @@ function writeLocalStorageMirror(tools, logs) {
         });
         localStorage.setItem(LS_BACKUP_KEY, payload);
     } catch {
-        // If base64 photos exceed localStorage quota, save without large photo strings so schedule never drops
         try {
             const textOnlyTools = tools.map(({ beforePhoto, afterPhoto, ...rest }) => ({
                 ...rest,
@@ -39,7 +37,7 @@ function writeLocalStorageMirror(tools, logs) {
                 })
             );
         } catch {
-            // Ignore if storage is disabled
+            // Ignore if storage is unavailable
         }
     }
 }
@@ -107,7 +105,7 @@ async function putToStore(storeName, item) {
             tx.onerror = () => reject(tx.error);
         });
     } catch {
-        // Fallback handled via mirror sync below
+        // Fallback handled via mirror sync
     }
 }
 
@@ -121,7 +119,7 @@ async function deleteByIdFromStore(storeName, id) {
             tx.onerror = () => reject(tx.error);
         });
     } catch {
-        // Handled via mirror sync below
+        // Fallback handled via mirror sync
     }
 }
 
@@ -135,7 +133,36 @@ async function clearStore(storeName) {
             tx.onerror = () => reject(tx.error);
         });
     } catch {
-        // Handled via mirror sync below
+        // Fallback handled via mirror sync
+    }
+}
+
+// Wipe any prior sample/old keys once so user starts with a completely clean slate
+async function runOneTimeCleanSlate() {
+    try {
+        if (localStorage.getItem(CLEAN_SLATE_FLAG) === "true") return;
+
+        await clearStore(STORE_TOOLS);
+        await clearStore(STORE_LOGS);
+
+        try {
+            localStorage.removeItem(LS_BACKUP_KEY);
+            localStorage.removeItem("ToolSyncPM_Persistent_State_v1");
+        } catch {
+            // Ignore
+        }
+
+        try {
+            if (indexedDB && typeof indexedDB.deleteDatabase === "function") {
+                indexedDB.deleteDatabase("MoldPMControlDB");
+            }
+        } catch {
+            // Ignore
+        }
+
+        localStorage.setItem(CLEAN_SLATE_FLAG, "true");
+    } catch {
+        // Ignore
     }
 }
 
@@ -463,21 +490,21 @@ document.getElementById("auto-distribute-80-btn").addEventListener("click", () =
         }
     }
 
-    const listToMap =
-        extracted.length > 0
-            ? extracted
-            : Array.from({ length: 80 }, (_, idx) => `MOLD-${String(idx + 1).padStart(3, "0")}`);
+    if (extracted.length === 0) {
+        showToast("Enter or scan mold numbers first");
+        return;
+    }
 
     const mappedLines = [];
-    for (let i = 0; i < listToMap.length; i += 3) {
-        const slice = listToMap.slice(i, i + 3);
+    for (let i = 0; i < extracted.length; i += 3) {
+        const slice = extracted.slice(i, i + 3);
         const slotDate = addDaysISO(startISO, Math.floor(i / 3));
         mappedLines.push(`${slotDate} | ${slice.join(", ")}`);
     }
 
     datewiseTextarea.value = mappedLines.join("\n");
     updateParsedCounter();
-    showToast(`Mapped ${listToMap.length} molds (3/day)`);
+    showToast(`Mapped ${extracted.length} molds (3/day)`);
 });
 
 planPhotoInput.addEventListener("change", async (e) => {
@@ -967,7 +994,6 @@ async function refreshAll() {
     let idbLogs = await getAllFromStore(STORE_LOGS);
     const mirror = readLocalStorageMirror();
 
-    // If IndexedDB is empty on refresh (e.g., restricted file:// origin), recover from localStorage mirror
     if (idbTools.length === 0 && mirror && mirror.tools.length > 0) {
         idbTools = mirror.tools;
         for (const t of idbTools) {
@@ -1116,9 +1142,11 @@ document.getElementById("export-csv-btn").addEventListener("click", () => {
     showToast("CSV report downloaded");
 });
 
-// Save latest state if user closes or refreshes tab
 window.addEventListener("beforeunload", () => {
     writeLocalStorageMirror(allTools, allLogs);
 });
 
-refreshAll();
+(async function initApp() {
+    await runOneTimeCleanSlate();
+    await refreshAll();
+})();
