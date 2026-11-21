@@ -249,6 +249,36 @@ function compressImageFile(file, maxWidth = 900, quality = 0.72) {
 }
 
 // =========================================================
+// Slide Menu Header Navigation (Goes Inside Selected Page View)
+// =========================================================
+let currentPageView = "pm-plan";
+
+function switchPageView(pageKey) {
+    currentPageView = pageKey;
+    document.querySelectorAll(".workspace-view").forEach((el) => {
+        el.classList.add("hidden");
+    });
+    const activeView = document.getElementById(`view-${pageKey}`);
+    if (activeView) activeView.classList.remove("hidden");
+
+    document.querySelectorAll(".slide-page-btn").forEach((btn) => {
+        const isCurrent = btn.getAttribute("data-page-tab") === pageKey;
+        btn.className = isCurrent
+            ? "slide-page-btn w-full px-3.5 py-2.5 rounded-xl text-left font-mono text-xs font-bold flex items-center justify-between border border-amber-400/60 bg-amber-400/15 text-amber-300 transition"
+            : "slide-page-btn w-full px-3.5 py-2.5 rounded-xl text-left font-mono text-xs font-bold flex items-center justify-between border border-transparent hover:border-stone-700 bg-[#0b0d11] text-stone-200 transition";
+    });
+
+    renderAll();
+}
+
+document.querySelectorAll("[data-page-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+        const tab = btn.getAttribute("data-page-tab");
+        if (tab) switchPageView(tab);
+    });
+});
+
+// =========================================================
 // App State & Core PM + Breakdown Logic
 // =========================================================
 const todayISO = formatDateISO(new Date());
@@ -439,6 +469,7 @@ function jumpToToolAcrossMonths(toolId) {
     const found = allTools.find((t) => t.id === toolId);
     if (!found) return;
     if (moldSearchResultsEl) moldSearchResultsEl.classList.add("hidden");
+    switchPageView("pm-plan");
     selectCalendarDate(found.scheduledDate);
     showToast(`Jumped to ${found.toolCode} (${found.scheduledDate})`);
 }
@@ -542,7 +573,7 @@ async function saveActualMoldSelf(toolId, value) {
     tool.actualMold = cleaned;
     await putToStore(STORE_TOOLS, tool);
     writeLocalStorageMirror(allTools, allBreakdowns);
-    showToast(cleaned ? `Saved actual mold: ${cleaned}` : "Actual mold cleared");
+    showToast(cleaned ? `Saved exchange mold: ${cleaned}` : "Exchange mold cleared");
     renderCalendarGrid();
     renderClickedDateStatusBanner(allTools.filter((t) => t.scheduledDate === activeDate));
 }
@@ -573,12 +604,13 @@ async function deleteToolRecord(toolId, skipConfirm = false) {
 // =========================================================
 // Breakdown Data CRUD + 12-Month Calendar
 // =========================================================
-const breakdownPanel = document.getElementById("breakdown-entry-panel");
 const breakdownForm = document.getElementById("breakdown-data-form");
 const bdDateInput = document.getElementById("bd-date-input");
 const bdToolCodeInput = document.getElementById("bd-tool-code-input");
-const bdMachineNoInput = document.getElementById("bd-machine-no-input");
 const bdIssueInput = document.getElementById("bd-issue-input");
+const bdStatusInput = document.getElementById("bd-status-input");
+const bdMachineNoInput = document.getElementById("bd-machine-no-input");
+const bdTimeInput = document.getElementById("bd-time-input");
 const bdSubmitBtn = document.getElementById("bd-submit-btn");
 const breakdownFormHeading = document.getElementById("breakdown-form-heading");
 
@@ -587,52 +619,51 @@ function openBreakdownForm(dateOverride = null, editItem = null) {
         editingBreakdownId = editItem.id;
         bdDateInput.value = editItem.date || selectedBreakdownDate || todayISO;
         bdToolCodeInput.value = editItem.toolCode || "";
-        bdMachineNoInput.value = editItem.machineNo || "";
         bdIssueInput.value = editItem.issue || "";
-        bdSubmitBtn.textContent = "Update Breakdown";
+        bdStatusInput.value = editItem.bdStatus || "Open";
+        bdMachineNoInput.value = editItem.machineNo || "";
+        bdTimeInput.value = editItem.duration || "";
+        bdSubmitBtn.textContent = "Update";
         breakdownFormHeading.textContent = `Edit Breakdown (${editItem.toolCode})`;
     } else {
         editingBreakdownId = null;
         bdDateInput.value = dateOverride || selectedBreakdownDate || activeDate || todayISO;
         bdToolCodeInput.value = "";
-        bdMachineNoInput.value = "";
         bdIssueInput.value = "";
-        bdSubmitBtn.textContent = "Save Breakdown";
-        breakdownFormHeading.textContent = "Enter Breakdown Data";
+        bdStatusInput.value = "Repaired";
+        bdMachineNoInput.value = "";
+        bdTimeInput.value = "";
+        bdSubmitBtn.textContent = "Save";
+        breakdownFormHeading.textContent = "Enter Data";
     }
-    breakdownPanel.classList.remove("hidden");
-    breakdownPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    switchPageView("breakdown");
+    bdToolCodeInput.focus();
 }
 
 document.getElementById("open-breakdown-entry-btn").addEventListener("click", () => {
-    if (!breakdownPanel.classList.contains("hidden") && !editingBreakdownId) {
-        breakdownPanel.classList.add("hidden");
-    } else {
-        openBreakdownForm(selectedBreakdownDate);
-    }
-});
-
-document.getElementById("close-breakdown-panel-btn").addEventListener("click", () => {
-    editingBreakdownId = null;
-    breakdownPanel.classList.add("hidden");
+    openBreakdownForm(selectedBreakdownDate);
 });
 
 breakdownForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const dateVal = bdDateInput.value || selectedBreakdownDate || todayISO;
     const toolVal = bdToolCodeInput.value.trim().toUpperCase();
-    const machVal = bdMachineNoInput.value.trim().toUpperCase();
     const issueVal = bdIssueInput.value.trim();
+    const statusVal = bdStatusInput.value.trim();
+    const machVal = bdMachineNoInput.value.trim().toUpperCase();
+    const timeVal = bdTimeInput.value.trim();
 
-    if (!toolVal || !machVal || !issueVal) return;
+    if (!toolVal || !issueVal || !statusVal || !machVal || !timeVal) return;
 
     if (editingBreakdownId) {
         const existing = allBreakdowns.find((b) => b.id === editingBreakdownId);
         if (existing) {
             existing.date = dateVal;
             existing.toolCode = toolVal;
-            existing.machineNo = machVal;
             existing.issue = issueVal;
+            existing.bdStatus = statusVal;
+            existing.machineNo = machVal;
+            existing.duration = timeVal;
             await putToStore(STORE_BREAKDOWNS, existing);
             showToast(`Updated breakdown ${toolVal}`);
         }
@@ -642,8 +673,10 @@ breakdownForm.addEventListener("submit", async (e) => {
             id: `bd_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
             date: dateVal,
             toolCode: toolVal,
-            machineNo: machVal,
             issue: issueVal,
+            bdStatus: statusVal,
+            machineNo: machVal,
+            duration: timeVal,
             createdAt: new Date().toISOString()
         };
         allBreakdowns.push(newBd);
@@ -658,7 +691,9 @@ breakdownForm.addEventListener("submit", async (e) => {
 
     writeLocalStorageMirror(allTools, allBreakdowns);
     breakdownForm.reset();
-    breakdownPanel.classList.add("hidden");
+    bdDateInput.value = dateVal;
+    bdSubmitBtn.textContent = "Save";
+    breakdownFormHeading.textContent = "Enter Data";
     await refreshAll();
 });
 
@@ -683,6 +718,7 @@ function editBreakdownRecord(bdId) {
 
 function selectBreakdownCalendarDate(dateStr) {
     selectedBreakdownDate = dateStr;
+    if (bdDateInput) bdDateInput.value = dateStr;
     const [y, m] = dateStr.split("-").map(Number);
     bdCalYear = y;
     bdCalMonth = m - 1;
@@ -696,6 +732,7 @@ function setBreakdownCalendarMonth(year, monthIndex) {
     const prefix = getYearMonthPrefix(bdCalYear, bdCalMonth);
     if (!selectedBreakdownDate.startsWith(prefix)) {
         selectedBreakdownDate = `${prefix}-01`;
+        if (bdDateInput) bdDateInput.value = selectedBreakdownDate;
     }
     renderBreakdownSection();
 }
@@ -708,36 +745,39 @@ document.getElementById("bd-cal-next-btn").addEventListener("click", () => {
 });
 
 function renderBreakdownSection() {
-    // Present Month Breakdown Data (based on calendar's active month or today's month)
     const presentPrefix = getYearMonthPrefix(calYear, calMonth);
     const presentBreakdowns = allBreakdowns
         .filter((b) => (b.date || "").startsWith(presentPrefix))
-        .sort((a, b) => a.date.localeCompare(b.date));
+        .sort((a, b) => b.date.localeCompare(a.date));
 
     const pmLabel = document.getElementById("present-month-bd-label");
     const pmCount = document.getElementById("present-month-bd-count");
-    const pmSummary = document.getElementById("present-month-bd-summary");
     const statMonthBd = document.getElementById("stat-month-breakdowns");
 
-    if (pmLabel) pmLabel.textContent = `Present Month Breakdown (${MONTH_SHORT[calMonth]} ${calYear})`;
+    if (pmLabel) pmLabel.textContent = `Present Month Breakdown (${MONTH_NAMES[calMonth]} ${calYear})`;
     if (pmCount) pmCount.textContent = String(presentBreakdowns.length);
     if (statMonthBd) statMonthBd.textContent = String(presentBreakdowns.length);
 
-    if (pmSummary) {
-        if (presentBreakdowns.length === 0) {
-            pmSummary.textContent = `No breakdown records for ${MONTH_NAMES[calMonth]} ${calYear}.`;
-        } else {
-            pmSummary.innerHTML = presentBreakdowns
-                .slice(0, 4)
-                .map(
-                    (b) =>
-                        `<div class="text-[11px] font-mono text-rose-200 truncate">• ${b.date}: <strong>${b.toolCode}</strong> (${b.machineNo}) — ${b.issue}</div>`
-                )
-                .join("");
-        }
+    const presentBdBody = document.getElementById("present-bd-tbody");
+    if (presentBdBody) {
+        presentBdBody.innerHTML = presentBreakdowns.length
+            ? presentBreakdowns
+                  .map(
+                      (b) => `
+                  <tr class="hover:bg-stone-900/50 font-mono text-xs">
+                      <td class="py-2.5 px-3 whitespace-nowrap">${b.date}</td>
+                      <td class="py-2.5 px-3 font-bold text-rose-300 whitespace-nowrap">${b.toolCode}</td>
+                      <td class="py-2.5 px-3 font-sans text-stone-200">${b.issue}</td>
+                      <td class="py-2.5 px-3 whitespace-nowrap">${b.bdStatus || "—"}</td>
+                      <td class="py-2.5 px-3 whitespace-nowrap">${b.machineNo}</td>
+                      <td class="py-2.5 px-3 whitespace-nowrap">${b.duration || "—"}</td>
+                  </tr>
+              `
+                  )
+                  .join("")
+            : `<tr><td colspan="6" class="py-6 text-center text-stone-500">No breakdown data for ${MONTH_NAMES[calMonth]} ${calYear}</td></tr>`;
     }
 
-    // 12-Month Pills inside Breakdown
     const bdPillsEl = document.getElementById("bd-twelve-month-pills");
     if (bdPillsEl) {
         bdPillsEl.innerHTML = MONTH_SHORT.map((shortM, idx) => {
@@ -748,21 +788,21 @@ function renderBreakdownSection() {
                 <button
                     type="button"
                     onclick="setBreakdownCalendarMonth(${bdCalYear}, ${idx})"
-                    class="shrink-0 px-2 py-1 rounded border transition flex items-center gap-1 ${
+                    class="shrink-0 px-2.5 py-1 rounded border transition flex items-center gap-1 ${
                         active
                             ? "border-rose-400 bg-rose-500/20 text-rose-200 font-bold"
                             : "border-stone-800 bg-[#11151d] text-stone-400 hover:text-stone-200"
                     }"
                 >
                     <span>${shortM}</span>
-                    <span class="px-1 rounded bg-stone-800 text-[9px]">${cnt}</span>
+                    <span class="px-1 rounded bg-stone-800 text-[10px]">${cnt}</span>
                 </button>
             `;
         }).join("");
     }
 
     const bdMonthLabel = document.getElementById("bd-cal-month-label");
-    if (bdMonthLabel) bdMonthLabel.textContent = `${MONTH_SHORT[bdCalMonth]} ${bdCalYear}`;
+    if (bdMonthLabel) bdMonthLabel.textContent = `${MONTH_NAMES[bdCalMonth]} ${bdCalYear}`;
 
     const bdGridEl = document.getElementById("bd-calendar-grid");
     if (bdGridEl) {
@@ -777,57 +817,53 @@ function renderBreakdownSection() {
 
         const cells = [];
         for (let i = 0; i < firstDay; i++) {
-            cells.push(`<div class="h-7 rounded bg-[#11151d]/40"></div>`);
+            cells.push(`<div class="h-12 rounded-lg bg-[#11151d]/40"></div>`);
         }
         for (let d = 1; d <= totalDays; d++) {
             const iso = `${bdCalYear}-${String(bdCalMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-            const hasBd = (bdByDate.get(iso) || []).length > 0;
+            const dayItems = bdByDate.get(iso) || [];
             const isSel = iso === selectedBreakdownDate;
             cells.push(`
                 <button
                     type="button"
                     onclick="selectBreakdownCalendarDate('${iso}')"
-                    class="h-7 rounded text-[11px] font-mono flex items-center justify-center relative border transition ${
+                    class="h-12 rounded-lg text-xs font-mono p-1.5 flex flex-col justify-between border transition ${
                         isSel
                             ? "border-rose-400 bg-rose-500/25 text-white font-bold"
-                            : hasBd
+                            : dayItems.length > 0
                             ? "border-rose-500/40 bg-rose-950/40 text-rose-200"
                             : "border-stone-800/70 bg-[#11151d] text-stone-400 hover:border-stone-600"
                     }"
                 >
                     <span>${d}</span>
-                    ${hasBd ? `<span class="w-1 h-1 rounded-full bg-rose-400 absolute bottom-0.5"></span>` : ""}
+                    <span class="text-[9px] truncate ${dayItems.length > 0 ? "text-rose-300" : "text-stone-600"}">
+                        ${dayItems.length > 0 ? dayItems.map((x) => x.toolCode).join(",") : "—"}
+                    </span>
                 </button>
             `);
         }
         bdGridEl.innerHTML = cells.join("");
     }
 
-    // Breakdown Mould History List (All months saved)
-    const bdListEl = document.getElementById("menu-breakdown-history-list");
-    if (bdListEl) {
+    const bdHistoryBody = document.getElementById("bd-history-tbody");
+    if (bdHistoryBody) {
         const sortedAll = [...allBreakdowns].sort((a, b) => b.date.localeCompare(a.date));
-        if (sortedAll.length === 0) {
-            bdListEl.innerHTML = `<div class="text-xs font-mono text-stone-500 py-2">No breakdown history yet. Click + Enter Data.</div>`;
-        } else {
-            bdListEl.innerHTML = sortedAll
-                .map(
-                    (b) => `
-                    <div class="rounded-lg border border-stone-800 bg-[#0b0d11] p-2.5 space-y-1">
-                        <div class="flex items-center justify-between gap-2 text-[11px] font-mono">
-                            <span class="text-rose-300 font-bold">${b.toolCode} • ${b.machineNo}</span>
-                            <span class="text-stone-400">${b.date}</span>
-                        </div>
-                        <div class="text-xs text-stone-200">${b.issue}</div>
-                        <div class="flex items-center justify-end gap-2 pt-1 text-[11px] font-mono">
-                            <button type="button" onclick="editBreakdownRecord('${b.id}')" class="text-sky-300 hover:underline">Edit</button>
-                            <button type="button" onclick="deleteBreakdownRecord('${b.id}')" class="text-rose-300 hover:underline">Delete</button>
-                        </div>
-                    </div>
-                `
-                )
-                .join("");
-        }
+        bdHistoryBody.innerHTML = sortedAll.length
+            ? sortedAll
+                  .map(
+                      (b) => `
+                  <tr class="hover:bg-stone-900/50 font-mono text-xs">
+                      <td class="py-2.5 px-3 whitespace-nowrap">${b.date}</td>
+                      <td class="py-2.5 px-3 font-bold text-rose-300 whitespace-nowrap">${b.toolCode}</td>
+                      <td class="py-2.5 px-3 font-sans text-stone-200">${b.issue}</td>
+                      <td class="py-2.5 px-3 whitespace-nowrap">${b.bdStatus || "—"}</td>
+                      <td class="py-2.5 px-3 whitespace-nowrap">${b.machineNo}</td>
+                      <td class="py-2.5 px-3 whitespace-nowrap">${b.duration || "—"}</td>
+                  </tr>
+              `
+                  )
+                  .join("")
+            : `<tr><td colspan="6" class="py-6 text-center text-stone-500">No breakdown history saved yet</td></tr>`;
     }
 }
 
@@ -1422,66 +1458,6 @@ function renderCalendarGrid() {
     grid.innerHTML = cells.join("");
 }
 
-function renderSlideMenuLists(monthTools) {
-    // 1. Running Month PM Plan (with Edit & Delete)
-    const runningTitle = document.getElementById("menu-running-month-title");
-    if (runningTitle) runningTitle.textContent = `${MONTH_SHORT[calMonth]} ${calYear} PM Plan`;
-
-    const runningListEl = document.getElementById("menu-running-pm-list");
-    if (runningListEl) {
-        if (monthTools.length === 0) {
-            runningListEl.innerHTML = `<div class="text-xs font-mono text-stone-500">No PM plans in ${MONTH_SHORT[calMonth]}.</div>`;
-        } else {
-            runningListEl.innerHTML = [...monthTools]
-                .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate))
-                .map(
-                    (t) => `
-                    <div class="rounded-lg border border-stone-800 bg-[#0b0d11] px-2.5 py-2 flex items-center justify-between gap-2 text-xs font-mono">
-                        <button type="button" onclick="selectCalendarDate('${t.scheduledDate}')" class="text-left min-w-0 flex-1">
-                            <div class="text-amber-300 font-bold truncate">${t.toolCode} • <span class="text-stone-400">${t.scheduledDate}</span></div>
-                            <div class="text-[11px] text-stone-300 truncate">${t.moldName}</div>
-                        </button>
-                        <div class="flex items-center gap-1.5 shrink-0">
-                            <button type="button" onclick="openEditModal('${t.id}')" class="px-1.5 py-0.5 rounded bg-stone-800 text-sky-300 hover:bg-stone-700">Edit</button>
-                            <button type="button" onclick="deleteToolRecord('${t.id}')" class="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 hover:bg-rose-500/25">Del</button>
-                        </div>
-                    </div>
-                `
-                )
-                .join("");
-        }
-    }
-
-    // 2. PM Done Mould History
-    const doneTools = allTools
-        .filter((t) => t.status === "PM Completed")
-        .sort((a, b) => b.scheduledDate.localeCompare(a.scheduledDate));
-
-    const doneCountEl = document.getElementById("menu-pm-done-count");
-    if (doneCountEl) doneCountEl.textContent = String(doneTools.length);
-
-    const doneListEl = document.getElementById("menu-pm-done-list");
-    if (doneListEl) {
-        if (doneTools.length === 0) {
-            doneListEl.innerHTML = `<div class="text-xs font-mono text-stone-500">No completed PM molds yet.</div>`;
-        } else {
-            doneListEl.innerHTML = doneTools
-                .map(
-                    (t) => `
-                    <div class="rounded-lg border border-emerald-500/25 bg-[#0b0d11] px-2.5 py-2 flex items-center justify-between gap-2 text-xs font-mono">
-                        <button type="button" onclick="selectCalendarDate('${t.scheduledDate}')" class="text-left min-w-0 flex-1">
-                            <div class="text-emerald-300 font-bold truncate">${t.toolCode} • ${t.scheduledDate}</div>
-                            <div class="text-[11px] text-stone-300 truncate">${t.actualMold ? `Self: ${t.actualMold}` : t.moldName}</div>
-                        </button>
-                        <button type="button" onclick="openEditModal('${t.id}')" class="px-1.5 py-0.5 rounded bg-stone-800 text-sky-300 shrink-0">Edit</button>
-                    </div>
-                `
-                )
-                .join("");
-        }
-    }
-}
-
 function renderClickedDateStatusBanner(selectedDayTools) {
     const badgeEl = document.getElementById("clicked-date-badge");
     const summaryEl = document.getElementById("clicked-date-summary");
@@ -1497,7 +1473,7 @@ function renderClickedDateStatusBanner(selectedDayTools) {
 
     const doneTools = selectedDayTools.filter((t) => t.status === "PM Completed");
     const pendingTools = selectedDayTools.filter((t) => t.status !== "PM Completed");
-    const formatToolLabel = (t) => (t.actualMold ? `${t.toolCode} → Self: ${t.actualMold}` : `${t.toolCode} (${t.moldName})`);
+    const formatToolLabel = (t) => (t.actualMold ? `${t.toolCode} → Exchange: ${t.actualMold}` : `${t.toolCode} (${t.moldName})`);
 
     if (doneTools.length === selectedDayTools.length) {
         summaryEl.innerHTML = `<span class="text-emerald-400 font-bold">&#10004; PM Completed on ${activeDate}</span> — ${doneTools.map(formatToolLabel).join(", ")}`;
@@ -1515,6 +1491,55 @@ function renderClickedDateStatusBanner(selectedDayTools) {
                 <button type="button" onclick="openEditModal('${t.id}')" class="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-sky-300 transition">Edit</button>
                 <button type="button" onclick="deleteToolRecord('${t.id}')" class="px-1.5 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 transition">Delete</button>
             </span>
+        `
+        )
+        .join("");
+}
+
+function renderCardCollection(containerId, list) {
+    const cardsGrid = document.getElementById(containerId);
+    if (!cardsGrid) return;
+
+    if (list.length === 0) {
+        cardsGrid.innerHTML = `
+            <div class="col-span-full rounded-2xl border border-dashed border-stone-800 bg-[#11151d]/60 p-6 text-center text-sm text-stone-400">
+                No mold PM saved for <span class="font-mono text-amber-400">${activeDate}</span>.
+            </div>
+        `;
+        return;
+    }
+
+    cardsGrid.innerHTML = list
+        .map(
+            (t) => `
+            <article class="rounded-2xl border border-stone-800 bg-[#11151d] p-5 flex flex-col justify-between gap-4 hover:border-stone-700 transition">
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="font-mono text-sm font-bold text-amber-400">${t.toolCode}</span>
+                        <div class="flex items-center gap-1.5">
+                            ${getStatusBadge(t.status)}
+                            <button type="button" onclick="openEditModal('${t.id}')" class="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 transition">Edit</button>
+                            <button type="button" onclick="deleteToolRecord('${t.id}')" class="px-2 py-0.5 rounded text-[11px] font-mono bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/35 transition">Delete</button>
+                        </div>
+                    </div>
+                    <h3 class="font-bold text-base text-white">${t.moldName}</h3>
+                    <p class="text-xs font-mono text-stone-400">Machine: ${t.machineNo} &bull; Date: ${t.scheduledDate}</p>
+                    ${t.actualMold ? `<p class="text-xs font-mono text-emerald-300 bg-emerald-950/30 border border-emerald-700/40 rounded-lg p-2">Exchange Mold: ${t.actualMold}</p>` : ""}
+                    ${t.remarks ? `<p class="text-xs text-stone-300 bg-stone-900/80 border border-stone-800 rounded-lg p-2">Remark: ${t.remarks}</p>` : ""}
+                    ${t.note ? `<p class="text-xs text-sky-300/90 bg-sky-950/30 border border-sky-800/40 rounded-lg p-2">${t.note}</p>` : ""}
+                </div>
+
+                <div class="space-y-2 pt-2 border-t border-stone-800/80">
+                    <div class="flex items-center justify-between text-[11px] font-mono text-stone-400">
+                        <span>Before: ${t.beforePhoto ? "&#10004; Attached" : "—"}</span>
+                        <span>After: ${t.afterPhoto ? "&#10004; Attached" : "—"}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button type="button" onclick="openPhotoModal('${t.id}')" class="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-100 font-mono text-xs font-semibold transition">Photos / PM Done</button>
+                        <button type="button" onclick="handleMachineRunning('${t.id}')" class="px-3 py-2 rounded-lg border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-mono text-xs font-semibold transition">Exchange / Swap</button>
+                    </div>
+                </div>
+            </article>
         `
         )
         .join("");
@@ -1570,56 +1595,16 @@ function renderAll() {
     document.getElementById("stat-swapped-count").textContent = String(swappedInMonth);
     document.getElementById("stat-month-tools").textContent = String(monthTools.length);
 
-    renderSlideMenuLists(monthTools);
-    renderBreakdownSection();
     renderClickedDateStatusBanner(selectedDayTools);
+    document.getElementById("daily-section-heading").textContent = `Daily PM Plan — ${activeDate}`;
+    renderCardCollection("daily-cards-grid", selectedDayTools);
 
-    document.getElementById("daily-section-heading").textContent = `Mold PM on ${activeDate}`;
+    // Present PM Plan View
+    const presentPmHeading = document.getElementById("present-pm-view-heading");
+    if (presentPmHeading) presentPmHeading.textContent = `Present PM Plan — ${MONTH_NAMES[calMonth]} ${calYear}`;
+    renderCardCollection("present-pm-view-cards", [...monthTools].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate)));
 
-    const cardsGrid = document.getElementById("daily-cards-grid");
-    if (selectedDayTools.length === 0) {
-        cardsGrid.innerHTML = `
-            <div class="col-span-full rounded-2xl border border-dashed border-stone-800 bg-[#11151d]/60 p-8 text-center text-sm text-stone-400">
-                No mold PM saved for <span class="font-mono text-amber-400">${activeDate}</span>. Click <strong class="text-amber-300">+ Add PM on Selected Date</strong> to store PM records behind this date.
-            </div>
-        `;
-    } else {
-        cardsGrid.innerHTML = selectedDayTools
-            .map(
-                (t) => `
-                <article class="rounded-2xl border border-stone-800 bg-[#11151d] p-5 flex flex-col justify-between gap-4 hover:border-stone-700 transition">
-                    <div class="space-y-2">
-                        <div class="flex items-center justify-between gap-2">
-                            <span class="font-mono text-sm font-bold text-amber-400">${t.toolCode}</span>
-                            <div class="flex items-center gap-1.5">
-                                ${getStatusBadge(t.status)}
-                                <button type="button" onclick="openEditModal('${t.id}')" class="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 transition">Edit</button>
-                                <button type="button" onclick="deleteToolRecord('${t.id}')" class="px-2 py-0.5 rounded text-[11px] font-mono bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/35 transition">Delete</button>
-                            </div>
-                        </div>
-                        <h3 class="font-bold text-base text-white">${t.moldName}</h3>
-                        <p class="text-xs font-mono text-stone-400">Machine: ${t.machineNo} &bull; Date: ${t.scheduledDate}</p>
-                        ${t.actualMold ? `<p class="text-xs font-mono text-emerald-300 bg-emerald-950/30 border border-emerald-700/40 rounded-lg p-2">Actual Mold (Self): ${t.actualMold}</p>` : ""}
-                        ${t.remarks ? `<p class="text-xs text-stone-300 bg-stone-900/80 border border-stone-800 rounded-lg p-2">Remark: ${t.remarks}</p>` : ""}
-                        ${t.note ? `<p class="text-xs text-sky-300/90 bg-sky-950/30 border border-sky-800/40 rounded-lg p-2">${t.note}</p>` : ""}
-                    </div>
-
-                    <div class="space-y-2 pt-2 border-t border-stone-800/80">
-                        <div class="flex items-center justify-between text-[11px] font-mono text-stone-400">
-                            <span>Before: ${t.beforePhoto ? "&#10004; Attached" : "—"}</span>
-                            <span>After: ${t.afterPhoto ? "&#10004; Attached" : "—"}</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2 pt-1">
-                            <button type="button" onclick="openPhotoModal('${t.id}')" class="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-100 font-mono text-xs font-semibold transition">Photos / PM Done</button>
-                            <button type="button" onclick="handleMachineRunning('${t.id}')" class="px-3 py-2 rounded-lg border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-mono text-xs font-semibold transition">Running / Swap</button>
-                        </div>
-                    </div>
-                </article>
-            `
-            )
-            .join("");
-    }
-
+    // Month PM Plan Table (Columns: PM Schedule | Exchange | Status | Photo | Edit)
     const rowsToShow = q ? [...allMonthMatches] : tableShowAllDates ? [...allTools] : [...monthTools];
     rowsToShow.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
 
@@ -1627,28 +1612,25 @@ function renderAll() {
         ? `Search Results Across All Months ("${q}") (${rowsToShow.length})`
         : tableShowAllDates
         ? `All Month PM Plan (${rowsToShow.length})`
-        : `PM Plan — ${MONTH_NAMES[calMonth]} ${calYear} (${rowsToShow.length})`;
+        : `Month PM Plan — ${MONTH_NAMES[calMonth]} ${calYear} (${rowsToShow.length})`;
 
     const tableBody = document.getElementById("schedule-table-body");
     if (rowsToShow.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-stone-500 font-mono text-xs">No PM plan entries found</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-stone-500 font-mono text-xs">No PM plan entries found</td></tr>`;
     } else {
         tableBody.innerHTML = rowsToShow
             .map(
                 (t) => `
                 <tr class="hover:bg-stone-900/50 cursor-pointer" onclick="selectCalendarDate('${t.scheduledDate}')">
-                    <td class="py-3 px-4 font-mono text-xs whitespace-nowrap text-stone-300">${t.scheduledDate}</td>
-                    <td class="py-3 px-4 font-mono text-xs font-bold text-amber-400 whitespace-nowrap">${t.toolCode}</td>
                     <td class="py-3 px-4">
-                        <div class="font-medium text-stone-100">${t.moldName}</div>
-                        <div class="text-xs font-mono text-stone-400">${t.machineNo}</div>
+                        <div class="font-mono text-xs font-bold text-amber-400">${t.toolCode} • ${t.scheduledDate}</div>
+                        <div class="text-sm text-stone-100">${t.moldName} (${t.machineNo})</div>
                     </td>
                     <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
                         <input
                             type="text"
                             value="${escapeHtmlAttr(t.actualMold || "")}"
-                            placeholder="Self mold done..."
-                            aria-label="Actual PM mold done by self for ${t.toolCode}"
+                            placeholder="Exchange mold..."
                             onchange="saveActualMoldSelf('${t.id}', this.value)"
                             onkeydown="if (event.key === 'Enter') { this.blur(); }"
                             class="w-40 sm:w-44 bg-[#0b0d11] border border-emerald-500/35 focus:border-emerald-400 rounded-lg px-2.5 py-1.5 text-xs font-mono text-emerald-200 placeholder-stone-500 focus:outline-none"
@@ -1656,8 +1638,12 @@ function renderAll() {
                     </td>
                     <td class="py-3 px-4 whitespace-nowrap">${getStatusBadge(t.status)}</td>
                     <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
+                        <button type="button" onclick="openPhotoModal('${t.id}')" class="underline font-mono text-xs text-amber-300 hover:text-amber-200">
+                            ${t.beforePhoto || t.afterPhoto ? "View Photo" : "Add Photo"}
+                        </button>
+                    </td>
+                    <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
                         <div class="flex items-center gap-2 font-mono text-xs">
-                            <button type="button" onclick="openPhotoModal('${t.id}')" class="underline text-amber-300 hover:text-amber-200">${t.beforePhoto || t.afterPhoto ? "Photos" : "Upload"}</button>
                             <button type="button" onclick="openEditModal('${t.id}')" class="underline text-sky-300 hover:text-sky-200">Edit</button>
                             <button type="button" onclick="deleteToolRecord('${t.id}')" class="underline text-rose-300 hover:text-rose-200">Delete</button>
                         </div>
@@ -1667,6 +1653,46 @@ function renderAll() {
             )
             .join("");
     }
+
+    // PM History View
+    const doneTools = allTools
+        .filter((t) => t.status === "PM Completed")
+        .sort((a, b) => b.scheduledDate.localeCompare(a.scheduledDate));
+    const viewPmDoneCount = document.getElementById("view-pm-done-count");
+    if (viewPmDoneCount) viewPmDoneCount.textContent = String(doneTools.length);
+
+    const viewPmHistoryBody = document.getElementById("view-pm-history-tbody");
+    if (viewPmHistoryBody) {
+        viewPmHistoryBody.innerHTML = doneTools.length
+            ? doneTools
+                  .map(
+                      (t) => `
+                  <tr class="hover:bg-stone-900/50">
+                      <td class="py-3 px-4">
+                          <div class="font-mono text-xs font-bold text-emerald-300">${t.toolCode} • ${t.scheduledDate}</div>
+                          <div class="text-sm text-stone-100">${t.moldName} (${t.machineNo})</div>
+                      </td>
+                      <td class="py-3 px-4 font-mono text-xs text-stone-300">${t.actualMold || "—"}</td>
+                      <td class="py-3 px-4 whitespace-nowrap">${getStatusBadge(t.status)}</td>
+                      <td class="py-3 px-4 whitespace-nowrap">
+                          <button type="button" onclick="openPhotoModal('${t.id}')" class="underline font-mono text-xs text-amber-300">
+                              ${t.beforePhoto || t.afterPhoto ? "View Photo" : "Add Photo"}
+                          </button>
+                      </td>
+                      <td class="py-3 px-4 whitespace-nowrap font-mono text-xs">
+                          <div class="flex items-center gap-2">
+                              <button type="button" onclick="openEditModal('${t.id}')" class="underline text-sky-300">Edit</button>
+                              <button type="button" onclick="deleteToolRecord('${t.id}')" class="underline text-rose-300">Delete</button>
+                          </div>
+                      </td>
+                  </tr>
+              `
+                  )
+                  .join("")
+            : `<tr><td colspan="5" class="py-6 text-center text-stone-500 font-mono text-xs">No completed PM history yet</td></tr>`;
+    }
+
+    renderBreakdownSection();
 }
 
 async function refreshAll() {
@@ -1714,16 +1740,6 @@ document.getElementById("quick-add-for-selected-date-btn").addEventListener("cli
 const filterMonthBtn = document.getElementById("filter-month-btn");
 const filterAllBtn = document.getElementById("filter-all-btn");
 
-function activateAllMonthPlanView(scrollToSection = false) {
-    tableShowAllDates = true;
-    filterAllBtn.className = "px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300";
-    filterMonthBtn.className = "px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400";
-    renderAll();
-    if (scrollToSection) {
-        document.getElementById("all-month-pm-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-}
-
 filterMonthBtn.addEventListener("click", () => {
     tableShowAllDates = false;
     filterMonthBtn.className = "px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300";
@@ -1731,15 +1747,12 @@ filterMonthBtn.addEventListener("click", () => {
     renderAll();
 });
 
-filterAllBtn.addEventListener("click", () => activateAllMonthPlanView(false));
-
-const menuAllMonthSlideBtn = document.getElementById("menu-switch-all-month-btn");
-if (menuAllMonthSlideBtn) {
-    menuAllMonthSlideBtn.addEventListener("click", () => {
-        activateAllMonthPlanView(true);
-        showToast("Showing All Month PM Plan");
-    });
-}
+filterAllBtn.addEventListener("click", () => {
+    tableShowAllDates = true;
+    filterAllBtn.className = "px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300";
+    filterMonthBtn.className = "px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400";
+    renderAll();
+});
 
 document.getElementById("add-tool-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1816,7 +1829,7 @@ document.getElementById("export-csv-btn").addEventListener("click", () => {
         "Original Date",
         "Tool ID (Planned)",
         "Mold Name (Planned)",
-        "Actual PM Mold (Self)",
+        "Exchange Mold",
         "Machine",
         "Status",
         "Before Photo",
@@ -1830,27 +1843,25 @@ document.getElementById("export-csv-btn").addEventListener("click", () => {
         `"${(t.moldName || "").replace(/"/g, '""')}"`,
         `"${(t.actualMold || "").replace(/"/g, '""')}"`,
         t.machineNo,
-        `"${(t.status || "").replace(/"/g, '""')}"`,
+        t.status,
         t.beforePhoto ? "Yes" : "No",
         t.afterPhoto ? "Yes" : "No",
         `"${(t.remarks || "").replace(/"/g, '""')}"`
     ]);
-    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `toolsync-pm-report-${activeDate}.csv`;
+    a.download = `toolsync-pm-plan-${activeDate}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast("CSV report downloaded");
+    showToast("CSV exported");
 });
 
-window.addEventListener("beforeunload", () => {
-    writeLocalStorageMirror(allTools, allBreakdowns);
-});
-
-(async function initApp() {
+(async function init() {
     await runOneTimeCleanSlate();
     await refreshAll();
+    switchPageView("pm-plan");
 })();
