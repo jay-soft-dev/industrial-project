@@ -22,7 +22,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="style.css" />
 </head>
 <body class="bg-[#0b0d11] text-stone-100 min-h-screen antialiased selection:bg-amber-400 selection:text-stone-950">
     <!-- Top Bar -->
@@ -36,7 +35,7 @@
                     class="px-3 py-2 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-amber-400/50 text-amber-300 font-mono text-xs font-bold flex items-center gap-2 transition"
                 >
                     <span>&#9776;</span>
-                    <span>Slide</span>
+                    <span>Slide Menu</span>
                 </button>
                 <div class="w-9 h-9 rounded-lg bg-amber-400 text-stone-950 font-mono font-bold flex items-center justify-center text-sm shadow-sm">
                     PM
@@ -96,120 +95,157 @@
         </div>
     </header>
 
-    <!-- Main Workspace: Left Slide Menu (Header Names Only) + Right Active Page -->
+    <!-- Main Sketch Workspace: Left Slide Menu + Right Main Workspace -->
     <div id="workspace-shell" class="max-w-[1440px] mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        <!-- LEFT SLIDE MENU: Only Header Names (Click to Open That Page View) -->
-        <aside id="slide-menu-panel" class="lg:col-span-4 xl:col-span-3 rounded-2xl border-2 border-stone-700/90 bg-[#11151d] p-3 space-y-2 shadow-xl">
-            <div class="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-stone-400">
-                Slide Menu
+        <!-- LEFT SLIDE MENU (Matches Sketch Left Panel) -->
+        <aside id="slide-menu-panel" class="lg:col-span-4 xl:col-span-3 rounded-2xl border-2 border-stone-700/90 bg-[#11151d] overflow-hidden divide-y-2 divide-stone-800 shadow-xl">
+            <!-- 1. Running Month PM Plan -->
+            <div class="p-4 space-y-3">
+                <div class="flex items-center justify-between gap-2">
+                    <div>
+                        <span class="text-[10px] font-mono uppercase tracking-wider text-amber-400">Slide Menu • 01</span>
+                        <h2 id="menu-running-month-title" class="text-sm font-bold text-white">Running Month PM Plan</h2>
+                    </div>
+                    <button
+                        id="menu-switch-all-month-btn"
+                        type="button"
+                        class="px-2.5 py-1 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 font-mono text-[11px] font-semibold transition"
+                    >
+                        All Month Slide
+                    </button>
+                </div>
+
+                <!-- Search Row Inside Menu -->
+                <div class="space-y-2 text-xs font-mono">
+                    <div class="flex items-center bg-[#0b0d11] border border-emerald-400/40 rounded-lg px-2.5 py-1.5">
+                        <label for="header-month-search" class="text-emerald-300 mr-2 font-bold shrink-0">MONTH</label>
+                        <input
+                            id="header-month-search"
+                            type="text"
+                            autocomplete="off"
+                            placeholder="Nov, 2026-11..."
+                            class="w-full bg-transparent text-white placeholder-stone-500 focus:outline-none"
+                        />
+                        <button id="clear-month-search-btn" type="button" class="hidden ml-1 text-emerald-300">&times;</button>
+                    </div>
+
+                    <div class="flex items-center bg-[#0b0d11] border border-sky-400/40 rounded-lg px-2.5 py-1.5 gap-1.5">
+                        <label for="header-date-search" class="text-sky-300 font-bold shrink-0">DATE</label>
+                        <input
+                            id="header-date-search"
+                            type="text"
+                            autocomplete="off"
+                            placeholder="YYYY-MM-DD"
+                            class="w-full min-w-0 bg-transparent text-amber-300 placeholder-stone-500 focus:outline-none"
+                        />
+                        <input
+                            id="selected-date"
+                            type="date"
+                            aria-label="Pick calendar date"
+                            class="bg-[#11151d] border border-stone-700 rounded px-1 py-0.5 text-[11px] text-amber-300 focus:outline-none shrink-0"
+                        />
+                        <button id="clear-date-search-btn" type="button" class="hidden text-sky-300">&times;</button>
+                    </div>
+
+                    <div class="relative flex items-center bg-[#0b0d11] border border-amber-400/50 rounded-lg px-2.5 py-1.5">
+                        <label for="header-mold-search" class="text-amber-300 mr-2 font-bold shrink-0">MOLD</label>
+                        <input
+                            id="header-mold-search"
+                            type="text"
+                            autocomplete="off"
+                            placeholder="Search all 12 months..."
+                            class="w-full bg-transparent text-white placeholder-stone-500 focus:outline-none"
+                        />
+                        <button id="clear-mold-search-btn" type="button" class="hidden ml-1 text-amber-300">&times;</button>
+
+                        <div
+                            id="mold-search-results"
+                            class="hidden fixed sm:absolute left-3 right-3 sm:left-0 sm:right-auto top-16 sm:top-full sm:mt-1.5 z-50 w-auto sm:w-[390px] max-h-72 overflow-y-auto rounded-xl bg-[#11151d] border border-amber-400/60 shadow-2xl divide-y divide-stone-800/80"
+                        ></div>
+                    </div>
+                </div>
+
+                <!-- Running Month PM List with Edit & Delete -->
+                <div id="menu-running-pm-list" class="max-h-48 overflow-y-auto space-y-1.5 pr-1"></div>
             </div>
 
-            <button
-                type="button"
-                data-page-tab="pm-plan"
-                class="slide-page-btn w-full px-3.5 py-2.5 rounded-xl text-left font-mono text-xs font-bold flex items-center justify-between border border-amber-400/60 bg-amber-400/15 text-amber-300 transition"
-            >
-                <span>PM Plan</span>
-                <span>&rsaquo;</span>
-            </button>
+            <!-- 2. PM Done Mould History -->
+            <div class="p-4 space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="text-[10px] font-mono uppercase tracking-wider text-emerald-400">Slide Menu • 02</span>
+                        <h2 class="text-sm font-bold text-white">PM Done Mould History</h2>
+                    </div>
+                    <span id="menu-pm-done-count" class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-mono text-[11px]">0</span>
+                </div>
+                <div id="menu-pm-done-list" class="max-h-44 overflow-y-auto space-y-1.5 pr-1"></div>
+            </div>
 
-            <button
-                type="button"
-                data-page-tab="present-pm"
-                class="slide-page-btn w-full px-3.5 py-2.5 rounded-xl text-left font-mono text-xs font-bold flex items-center justify-between border border-transparent hover:border-stone-700 bg-[#0b0d11] text-stone-200 transition"
-            >
-                <span>Present PM Plan</span>
-                <span>&rsaquo;</span>
-            </button>
-
-            <button
-                type="button"
-                data-page-tab="pm-history"
-                class="slide-page-btn w-full px-3.5 py-2.5 rounded-xl text-left font-mono text-xs font-bold flex items-center justify-between border border-transparent hover:border-stone-700 bg-[#0b0d11] text-stone-200 transition"
-            >
-                <span>PM History</span>
-                <span>&rsaquo;</span>
-            </button>
-
-            <button
-                type="button"
-                data-page-tab="breakdown"
-                class="slide-page-btn w-full px-3.5 py-2.5 rounded-xl text-left font-mono text-xs font-bold flex items-center justify-between border border-transparent hover:border-stone-700 bg-[#0b0d11] text-stone-200 transition"
-            >
-                <span>Breakdown</span>
-                <span>&rsaquo;</span>
-            </button>
-
-            <button
-                type="button"
-                data-page-tab="present-breakdown"
-                class="slide-page-btn w-full px-3.5 py-2.5 rounded-xl text-left font-mono text-xs font-bold flex items-center justify-between border border-transparent hover:border-stone-700 bg-[#0b0d11] text-stone-200 transition"
-            >
-                <span>Present Month Breakdown</span>
-                <span>&rsaquo;</span>
-            </button>
-
-            <button
-                type="button"
-                data-page-tab="breakdown-history"
-                class="slide-page-btn w-full px-3.5 py-2.5 rounded-xl text-left font-mono text-xs font-bold flex items-center justify-between border border-transparent hover:border-stone-700 bg-[#0b0d11] text-stone-200 transition"
-            >
-                <span>Breakdown History</span>
-                <span>&rsaquo;</span>
-            </button>
-
-            <!-- Compact Search Inputs Inside Slide Menu -->
-            <div class="pt-2 mt-1 border-t border-stone-800 space-y-2 text-xs font-mono">
-                <div class="flex items-center bg-[#0b0d11] border border-emerald-400/40 rounded-lg px-2.5 py-1.5">
-                    <label for="header-month-search" class="text-emerald-300 mr-2 font-bold shrink-0">MONTH</label>
-                    <input
-                        id="header-month-search"
-                        type="text"
-                        autocomplete="off"
-                        placeholder="Nov, 2026-11..."
-                        class="w-full bg-transparent text-white placeholder-stone-500 focus:outline-none"
-                    />
-                    <button id="clear-month-search-btn" type="button" class="hidden ml-1 text-emerald-300">&times;</button>
+            <!-- 3. Breakdown Mould History + 12-Month Auto Calendar + Enter Data + Present Month Breakdown -->
+            <div class="p-4 space-y-3">
+                <div class="flex items-center justify-between gap-2">
+                    <div>
+                        <span class="text-[10px] font-mono uppercase tracking-wider text-rose-400">Slide Menu • 03</span>
+                        <h2 class="text-sm font-bold text-white">Breakdown Mould History</h2>
+                    </div>
+                    <button
+                        id="open-breakdown-entry-btn"
+                        type="button"
+                        class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 font-mono text-[11px] font-bold transition"
+                    >
+                        + Enter Data
+                    </button>
                 </div>
 
-                <div class="flex items-center bg-[#0b0d11] border border-sky-400/40 rounded-lg px-2.5 py-1.5 gap-1.5">
-                    <label for="header-date-search" class="text-sky-300 font-bold shrink-0">DATE</label>
-                    <input
-                        id="header-date-search"
-                        type="text"
-                        autocomplete="off"
-                        placeholder="YYYY-MM-DD"
-                        class="w-full min-w-0 bg-transparent text-amber-300 placeholder-stone-500 focus:outline-none"
-                    />
-                    <input
-                        id="selected-date"
-                        type="date"
-                        aria-label="Pick calendar date"
-                        class="bg-[#11151d] border border-stone-700 rounded px-1 py-0.5 text-[11px] text-amber-300 focus:outline-none shrink-0"
-                    />
-                    <button id="clear-date-search-btn" type="button" class="hidden text-sky-300">&times;</button>
+                <!-- Present Month Breakdown Data Box -->
+                <div class="rounded-xl border border-rose-500/30 bg-[#0b0d11] p-3 space-y-1.5">
+                    <div class="flex items-center justify-between text-[11px] font-mono">
+                        <span id="present-month-bd-label" class="text-rose-300 font-bold">Present Month Breakdown Data</span>
+                        <span id="present-month-bd-count" class="text-stone-300">0</span>
+                    </div>
+                    <div id="present-month-bd-summary" class="text-xs text-stone-300">
+                        No breakdown data entered for present month yet.
+                    </div>
                 </div>
 
-                <div class="relative flex items-center bg-[#0b0d11] border border-amber-400/50 rounded-lg px-2.5 py-1.5">
-                    <label for="header-mold-search" class="text-amber-300 mr-2 font-bold shrink-0">MOLD</label>
-                    <input
-                        id="header-mold-search"
-                        type="text"
-                        autocomplete="off"
-                        placeholder="Search all 12 months..."
-                        class="w-full bg-transparent text-white placeholder-stone-500 focus:outline-none"
-                    />
-                    <button id="clear-mold-search-btn" type="button" class="hidden ml-1 text-amber-300">&times;</button>
+                <!-- 12-Month Auto Calendar (Persists All Months Data) -->
+                <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-3 space-y-2">
+                    <div class="flex items-center justify-between gap-1">
+                        <span class="text-[11px] font-mono uppercase text-amber-300 font-bold">12-Month Auto Calendar</span>
+                        <div class="flex items-center gap-1">
+                            <button
+                                id="bd-cal-prev-btn"
+                                type="button"
+                                class="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-[11px] font-mono"
+                            >
+                                &lsaquo;
+                            </button>
+                            <span id="bd-cal-month-label" class="text-[11px] font-mono text-stone-200 px-1"></span>
+                            <button
+                                id="bd-cal-next-btn"
+                                type="button"
+                                class="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-[11px] font-mono"
+                            >
+                                &rsaquo;
+                            </button>
+                        </div>
+                    </div>
 
-                    <div
-                        id="mold-search-results"
-                        class="hidden fixed sm:absolute left-3 right-3 sm:left-0 sm:right-auto top-16 sm:top-full sm:mt-1.5 z-50 w-auto sm:w-[390px] max-h-72 overflow-y-auto rounded-xl bg-[#11151d] border border-amber-400/60 shadow-2xl divide-y divide-stone-800/80"
-                    ></div>
+                    <!-- 12 Month Pills (All Months Saved) -->
+                    <div id="bd-twelve-month-pills" class="flex items-center gap-1 overflow-x-auto pb-1 text-[10px] font-mono"></div>
+
+                    <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-mono text-stone-500">
+                        <div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div>
+                    </div>
+                    <div id="bd-calendar-grid" class="grid grid-cols-7 gap-1"></div>
                 </div>
+
+                <!-- Breakdown History List (Edit / Delete) -->
+                <div id="menu-breakdown-history-list" class="max-h-52 overflow-y-auto space-y-1.5 pr-1"></div>
             </div>
         </aside>
 
-        <!-- RIGHT MAIN WORKSPACE AREA -->
+        <!-- RIGHT MAIN CONTENT AREA (Matches Sketch Right Panel) -->
         <main class="lg:col-span-8 xl:col-span-9 space-y-5">
             <!-- Active All-Months Mold Search Results Card -->
             <section
@@ -254,6 +290,64 @@
                     <div id="stat-month-breakdowns" class="mt-1 text-2xl font-bold font-mono text-rose-400">0</div>
                     <div class="mt-0.5 text-[11px] text-stone-400">12-month history saved</div>
                 </div>
+            </section>
+
+            <!-- Breakdown Data Entry Panel (Collapsible) -->
+            <section id="breakdown-entry-panel" class="hidden rounded-2xl bg-[#11151d] border border-rose-500/40 p-5 space-y-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="text-[10px] font-mono uppercase text-rose-400">Breakdown Data Entry</span>
+                        <h2 id="breakdown-form-heading" class="text-base font-bold text-white">Enter Breakdown Data</h2>
+                    </div>
+                    <button
+                        id="close-breakdown-panel-btn"
+                        type="button"
+                        class="text-xs font-mono text-stone-400 hover:text-white"
+                    >
+                        Close [X]
+                    </button>
+                </div>
+
+                <form id="breakdown-data-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <input
+                        id="bd-date-input"
+                        type="date"
+                        name="bdDate"
+                        required
+                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono text-rose-300 focus:border-rose-400 focus:outline-none"
+                    />
+                    <input
+                        id="bd-tool-code-input"
+                        type="text"
+                        name="toolCode"
+                        required
+                        placeholder="Tool / Mould ID (e.g. IM-108)"
+                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-rose-400 focus:outline-none"
+                    />
+                    <input
+                        id="bd-machine-no-input"
+                        type="text"
+                        name="machineNo"
+                        required
+                        placeholder="Machine No (e.g. IMM-04)"
+                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-rose-400 focus:outline-none"
+                    />
+                    <input
+                        id="bd-issue-input"
+                        type="text"
+                        name="issue"
+                        required
+                        placeholder="Breakdown Issue (e.g. Slider jam)"
+                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm focus:border-rose-400 focus:outline-none"
+                    />
+                    <button
+                        id="bd-submit-btn"
+                        type="submit"
+                        class="bg-rose-500 hover:bg-rose-400 text-white font-mono font-bold text-sm rounded-lg px-4 py-2 transition"
+                    >
+                        Save Breakdown
+                    </button>
+                </form>
             </section>
 
             <!-- Add Mold PM Form (Collapsible) -->
@@ -306,347 +400,143 @@
                 </form>
             </section>
 
-            <!-- VIEW 1: PM PLAN (Daily PM Plan + Month PM Plan) -->
-            <div id="view-pm-plan" class="workspace-view space-y-5">
-                <section class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4 sm:p-5 space-y-4">
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <span class="text-[10px] font-mono uppercase text-amber-400">PM Plan • Daily &amp; Month Plan</span>
-                            <h2 id="calendar-month-heading" class="text-base sm:text-lg font-bold">Calendar</h2>
-                        </div>
-
-                        <div class="flex flex-wrap items-center gap-2">
-                            <button
-                                id="prev-month-btn"
-                                type="button"
-                                class="px-3 py-1.5 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono transition"
-                            >
-                                &larr; Prev
-                            </button>
-
-                            <select
-                                id="calendar-month-select"
-                                aria-label="Select Month"
-                                class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-amber-300 focus:border-amber-400 focus:outline-none cursor-pointer"
-                            >
-                                <option value="0">January</option>
-                                <option value="1">February</option>
-                                <option value="2">March</option>
-                                <option value="3">April</option>
-                                <option value="4">May</option>
-                                <option value="5">June</option>
-                                <option value="6">July</option>
-                                <option value="7">August</option>
-                                <option value="8">September</option>
-                                <option value="9">October</option>
-                                <option value="10">November</option>
-                                <option value="11">December</option>
-                            </select>
-
-                            <select
-                                id="calendar-year-select"
-                                aria-label="Select Year"
-                                class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-stone-200 focus:border-amber-400 focus:outline-none cursor-pointer"
-                            ></select>
-
-                            <button
-                                id="next-month-btn"
-                                type="button"
-                                class="px-3 py-1.5 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono transition"
-                            >
-                                Next &rarr;
-                            </button>
-                        </div>
+            <!-- 12-Month Calendar Card + All-Month PM Plan Slide Strip -->
+            <section class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4 sm:p-5 space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 id="calendar-month-heading" class="text-base sm:text-lg font-bold">Calendar</h2>
+                        <p class="text-xs text-stone-400">
+                            Slide across all 12 months or click any date to view, edit, delete, or add PM plans
+                        </p>
                     </div>
 
-                    <div id="twelve-month-pills" class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono"></div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button
+                            id="prev-month-btn"
+                            type="button"
+                            class="px-3 py-1.5 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono transition"
+                        >
+                            &larr; Prev
+                        </button>
 
-                    <div class="grid grid-cols-7 gap-1.5 sm:gap-2 text-center text-[11px] font-mono uppercase text-stone-400">
-                        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                        <select
+                            id="calendar-month-select"
+                            aria-label="Select Month"
+                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-amber-300 focus:border-amber-400 focus:outline-none cursor-pointer"
+                        >
+                            <option value="0">January</option>
+                            <option value="1">February</option>
+                            <option value="2">March</option>
+                            <option value="3">April</option>
+                            <option value="4">May</option>
+                            <option value="5">June</option>
+                            <option value="6">July</option>
+                            <option value="7">August</option>
+                            <option value="8">September</option>
+                            <option value="9">October</option>
+                            <option value="10">November</option>
+                            <option value="11">December</option>
+                        </select>
+
+                        <select
+                            id="calendar-year-select"
+                            aria-label="Select Year"
+                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-stone-200 focus:border-amber-400 focus:outline-none cursor-pointer"
+                        ></select>
+
+                        <button
+                            id="next-month-btn"
+                            type="button"
+                            class="px-3 py-1.5 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono transition"
+                        >
+                            Next &rarr;
+                        </button>
                     </div>
+                </div>
 
-                    <div id="calendar-days-grid" class="grid grid-cols-7 gap-1.5 sm:gap-2"></div>
+                <!-- 12-Month Quick Switcher Slide Strip -->
+                <div id="twelve-month-pills" class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono"></div>
 
-                    <div
-                        id="clicked-date-banner"
-                        class="rounded-xl border border-stone-800 bg-[#0b0d11] px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+                <!-- Weekday Headers -->
+                <div class="grid grid-cols-7 gap-1.5 sm:gap-2 text-center text-[11px] font-mono uppercase text-stone-400">
+                    <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                </div>
+
+                <!-- Days Grid -->
+                <div id="calendar-days-grid" class="grid grid-cols-7 gap-1.5 sm:gap-2"></div>
+
+                <!-- Clicked Date Saved Status Banner -->
+                <div
+                    id="clicked-date-banner"
+                    class="rounded-xl border border-stone-800 bg-[#0b0d11] px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+                >
+                    <div class="space-y-1 flex-1 min-w-[220px]">
+                        <div id="clicked-date-badge" class="text-[11px] font-mono uppercase text-amber-300">
+                            Selected Date Record
+                        </div>
+                        <div id="clicked-date-summary" class="text-xs sm:text-sm text-stone-200">
+                            Select a date to view saved PM status.
+                        </div>
+                        <div id="clicked-date-quick-actions" class="flex flex-wrap items-center gap-2 pt-1"></div>
+                    </div>
+                    <button
+                        id="quick-add-for-selected-date-btn"
+                        type="button"
+                        class="px-3 py-1.5 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-mono font-semibold transition"
                     >
-                        <div class="space-y-1 flex-1 min-w-[220px]">
-                            <div id="clicked-date-badge" class="text-[11px] font-mono uppercase text-amber-300">
-                                Selected Date Record
-                            </div>
-                            <div id="clicked-date-summary" class="text-xs sm:text-sm text-stone-200">
-                                Select a date to view saved PM status.
-                            </div>
-                            <div id="clicked-date-quick-actions" class="flex flex-wrap items-center gap-2 pt-1"></div>
-                        </div>
+                        + Add PM on Selected Date
+                    </button>
+                </div>
+            </section>
+
+            <!-- Daily Mold PM Cards -->
+            <section class="space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h2 id="daily-section-heading" class="text-lg font-bold tracking-tight">Mold PM for Selected Date</h2>
+                    <span class="text-xs font-mono text-stone-400">
+                        Edit, Delete, Photos, or Running / Swap
+                    </span>
+                </div>
+                <div id="daily-cards-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+            </section>
+
+            <!-- Full PM Plan & All-Month Slide Table -->
+            <section id="all-month-pm-section" class="rounded-2xl bg-[#11151d] border border-stone-800/90 overflow-hidden">
+                <div class="px-5 py-4 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
+                    <h3 id="pm-schedule-heading" class="font-bold text-base">PM Plan</h3>
+                    <div class="flex items-center gap-2 text-xs font-mono">
                         <button
-                            id="quick-add-for-selected-date-btn"
+                            id="filter-month-btn"
                             type="button"
-                            class="px-3 py-1.5 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-mono font-semibold transition"
+                            class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300"
                         >
-                            + Add PM on Selected Date
+                            Running Month
+                        </button>
+                        <button
+                            id="filter-all-btn"
+                            type="button"
+                            class="px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400"
+                        >
+                            All Month PM Plan
                         </button>
                     </div>
-                </section>
-
-                <!-- Daily PM Plan Cards -->
-                <section class="space-y-3">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <h2 id="daily-section-heading" class="text-lg font-bold tracking-tight">Daily PM Plan</h2>
-                        <span class="text-xs font-mono text-stone-400">
-                            Exchange, Status, Photo, Edit &amp; Delete
-                        </span>
-                    </div>
-                    <div id="daily-cards-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
-                </section>
-
-                <!-- Month PM Plan Table (PM Schedule | Exchange | Status | Photo | Edit) -->
-                <section id="all-month-pm-section" class="rounded-2xl bg-[#11151d] border border-stone-800/90 overflow-hidden">
-                    <div class="px-5 py-4 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
-                        <h3 id="pm-schedule-heading" class="font-bold text-base">Month PM Plan</h3>
-                        <div class="flex items-center gap-2 text-xs font-mono">
-                            <button
-                                id="filter-month-btn"
-                                type="button"
-                                class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300"
-                            >
-                                Running Month
-                            </button>
-                            <button
-                                id="filter-all-btn"
-                                type="button"
-                                class="px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400"
-                            >
-                                All Month PM Plan
-                            </button>
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse text-sm">
-                            <thead>
-                                <tr class="border-b border-stone-800/80 text-[11px] font-mono uppercase text-stone-400 bg-[#0d1017]">
-                                    <th class="py-3 px-4">PM SCHEDULE</th>
-                                    <th class="py-3 px-4">EXCHANGE</th>
-                                    <th class="py-3 px-4">STATUS</th>
-                                    <th class="py-3 px-4">PHOTO</th>
-                                    <th class="py-3 px-4">EDIT</th>
-                                </tr>
-                            </thead>
-                            <tbody id="schedule-table-body" class="divide-y divide-stone-800/60"></tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
-
-            <!-- VIEW 2: PRESENT PM PLAN -->
-            <div id="view-present-pm" class="workspace-view hidden space-y-5">
-                <section class="rounded-2xl bg-[#11151d] border border-amber-400/40 p-5 space-y-4">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                            <span class="text-[10px] font-mono uppercase text-amber-400">Page View • Present PM Plan</span>
-                            <h2 id="present-pm-view-heading" class="text-lg font-bold">Present PM Plan</h2>
-                        </div>
-                        <button
-                            type="button"
-                            onclick="openAddFormForActiveDate()"
-                            class="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono text-xs font-bold"
-                        >
-                            + Add Present PM
-                        </button>
-                    </div>
-                    <div id="present-pm-view-cards" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
-                </section>
-            </div>
-
-            <!-- VIEW 3: PM HISTORY -->
-            <div id="view-pm-history" class="workspace-view hidden space-y-5">
-                <section class="rounded-2xl bg-[#11151d] border border-emerald-500/40 p-5 space-y-4">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-[10px] font-mono uppercase text-emerald-400">Page View • PM History</span>
-                            <h2 class="text-lg font-bold">PM History (Completed Moulds)</h2>
-                        </div>
-                        <span id="view-pm-done-count" class="px-2.5 py-1 rounded bg-emerald-500/15 text-emerald-300 font-mono text-xs font-bold">0</span>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse text-sm">
-                            <thead>
-                                <tr class="border-b border-stone-800/80 text-[11px] font-mono uppercase text-stone-400 bg-[#0d1017]">
-                                    <th class="py-3 px-4">PM SCHEDULE</th>
-                                    <th class="py-3 px-4">EXCHANGE</th>
-                                    <th class="py-3 px-4">STATUS</th>
-                                    <th class="py-3 px-4">PHOTO</th>
-                                    <th class="py-3 px-4">EDIT</th>
-                                </tr>
-                            </thead>
-                            <tbody id="view-pm-history-tbody" class="divide-y divide-stone-800/60"></tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
-
-            <!-- VIEW 4: BREAKDOWN (12-Month Auto Calendar + Enter Data) -->
-            <div id="view-breakdown" class="workspace-view hidden space-y-5">
-                <section id="breakdown-entry-panel" class="rounded-2xl bg-[#11151d] border border-rose-500/40 p-5 space-y-4">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-[10px] font-mono uppercase text-rose-400">Page View • Breakdown</span>
-                            <h2 id="breakdown-form-heading" class="text-base font-bold text-white">Enter Data</h2>
-                        </div>
-                        <button
-                            id="open-breakdown-entry-btn"
-                            type="button"
-                            class="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 font-mono text-xs font-bold transition"
-                        >
-                            + Enter Data
-                        </button>
-                    </div>
-
-                    <form id="breakdown-data-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
-                        <input
-                            id="bd-date-input"
-                            type="date"
-                            name="bdDate"
-                            required
-                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono text-rose-300 focus:border-rose-400 focus:outline-none"
-                        />
-                        <input
-                            id="bd-tool-code-input"
-                            type="text"
-                            name="toolCode"
-                            required
-                            placeholder="Breakdown Mould Num"
-                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono focus:border-rose-400 focus:outline-none"
-                        />
-                        <input
-                            id="bd-issue-input"
-                            type="text"
-                            name="issue"
-                            required
-                            placeholder="Reason"
-                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs focus:border-rose-400 focus:outline-none"
-                        />
-                        <input
-                            id="bd-status-input"
-                            type="text"
-                            name="bdStatus"
-                            required
-                            placeholder="Status"
-                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono focus:border-rose-400 focus:outline-none"
-                        />
-                        <input
-                            id="bd-machine-no-input"
-                            type="text"
-                            name="machineNo"
-                            required
-                            placeholder="M/C No"
-                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono focus:border-rose-400 focus:outline-none"
-                        />
-                        <div class="flex gap-1.5">
-                            <input
-                                id="bd-time-input"
-                                type="text"
-                                name="duration"
-                                required
-                                placeholder="Time"
-                                class="w-full min-w-0 bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono focus:border-rose-400 focus:outline-none"
-                            />
-                            <button
-                                id="bd-submit-btn"
-                                type="submit"
-                                class="bg-rose-500 hover:bg-rose-400 text-white font-mono font-bold text-xs rounded-lg px-3 py-2 shrink-0 transition"
-                            >
-                                Save
-                            </button>
-                        </div>
-                    </form>
-                </section>
-
-                <section class="rounded-2xl bg-[#11151d] border border-stone-800 p-5 space-y-3">
-                    <div class="flex items-center justify-between gap-2">
-                        <span id="bd-cal-month-label" class="text-xs font-mono uppercase text-amber-300 font-bold">12-Month Calendar</span>
-                        <div class="flex items-center gap-1.5">
-                            <button
-                                id="bd-cal-prev-btn"
-                                type="button"
-                                class="px-2.5 py-1 rounded bg-stone-800 hover:bg-stone-700 text-xs font-mono"
-                            >
-                                &lsaquo;
-                            </button>
-                            <button
-                                id="bd-cal-next-btn"
-                                type="button"
-                                class="px-2.5 py-1 rounded bg-stone-800 hover:bg-stone-700 text-xs font-mono"
-                            >
-                                &rsaquo;
-                            </button>
-                        </div>
-                    </div>
-
-                    <div id="bd-twelve-month-pills" class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono"></div>
-
-                    <div class="grid grid-cols-7 gap-1.5 text-center text-[10px] font-mono text-stone-500">
-                        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
-                    </div>
-                    <div id="bd-calendar-grid" class="grid grid-cols-7 gap-1.5"></div>
-                </section>
-            </div>
-
-            <!-- VIEW 5: PRESENT MONTH BREAKDOWN -->
-            <div id="view-present-breakdown" class="workspace-view hidden space-y-5">
-                <section class="rounded-2xl bg-[#11151d] border border-rose-500/40 p-5 space-y-4">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-[10px] font-mono uppercase text-rose-400">Page View • Present Month Breakdown</span>
-                            <h2 id="present-month-bd-label" class="text-lg font-bold">Present Month Breakdown</h2>
-                        </div>
-                        <span id="present-month-bd-count" class="px-2.5 py-1 rounded bg-rose-500/15 text-rose-300 font-mono text-xs font-bold">0</span>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse text-sm">
-                            <thead>
-                                <tr class="border-b border-stone-800/80 text-[11px] font-mono uppercase text-stone-400 bg-[#0d1017]">
-                                    <th class="py-3 px-3">DATE</th>
-                                    <th class="py-3 px-3">BREAKDOWN MOULD NUM</th>
-                                    <th class="py-3 px-3">REASON</th>
-                                    <th class="py-3 px-3">STATUS</th>
-                                    <th class="py-3 px-3">M/C NO</th>
-                                    <th class="py-3 px-3">TIME</th>
-                                </tr>
-                            </thead>
-                            <tbody id="present-bd-tbody" class="divide-y divide-stone-800/60"></tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
-
-            <!-- VIEW 6: BREAKDOWN HISTORY -->
-            <div id="view-breakdown-history" class="workspace-view hidden space-y-5">
-                <section class="rounded-2xl bg-[#11151d] border border-rose-500/40 p-5 space-y-4">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-[10px] font-mono uppercase text-rose-400">Page View • Breakdown History</span>
-                            <h2 class="text-lg font-bold">Breakdown History (All Months Saved)</h2>
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse text-sm">
-                            <thead>
-                                <tr class="border-b border-stone-800/80 text-[11px] font-mono uppercase text-stone-400 bg-[#0d1017]">
-                                    <th class="py-3 px-3">DATE</th>
-                                    <th class="py-3 px-3">BREAKDOWN MOULD NUM</th>
-                                    <th class="py-3 px-3">REASON</th>
-                                    <th class="py-3 px-3">STATUS</th>
-                                    <th class="py-3 px-3">M/C NO</th>
-                                    <th class="py-3 px-3">TIME</th>
-                                </tr>
-                            </thead>
-                            <tbody id="bd-history-tbody" class="divide-y divide-stone-800/60"></tbody>
-                        </table>
-                    </div>
-                </section>
-            </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr class="border-b border-stone-800/80 text-[11px] font-mono uppercase text-stone-400 bg-[#0d1017]">
+                                <th class="py-3 px-4">DATE</th>
+                                <th class="py-3 px-4">TOOL ID</th>
+                                <th class="py-3 px-4">MOLD &amp; MACHINE</th>
+                                <th class="py-3 px-4">ACTUAL PM MOLD (SELF)</th>
+                                <th class="py-3 px-4">STATUS</th>
+                                <th class="py-3 px-4">EDIT &amp; DELETE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="schedule-table-body" class="divide-y divide-stone-800/60"></tbody>
+                    </table>
+                </div>
+            </section>
         </main>
     </div>
 
@@ -696,11 +586,11 @@
                         />
                     </div>
                     <div>
-                        <label class="block text-xs font-mono text-emerald-300 mb-1">Exchange / Actual Mold</label>
+                        <label class="block text-xs font-mono text-emerald-300 mb-1">Actual PM Mold Done (Self)</label>
                         <input
                             id="edit-actual-mold"
                             type="text"
-                            placeholder="Enter exchanged or actual mold..."
+                            placeholder="If plan mold N/A, enter mold done..."
                             class="w-full bg-[#0b0d11] border border-emerald-500/40 rounded-lg px-3 py-2 text-sm font-mono text-emerald-200 placeholder-stone-500 focus:border-emerald-400 focus:outline-none"
                         />
                     </div>
