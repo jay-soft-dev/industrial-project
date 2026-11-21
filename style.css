@@ -16,3 +16,91 @@
 ::-webkit-scrollbar-thumb:hover {
     background: #fbbf24;
 }
+
+/* Base & Typography Polish */
+html,
+body {
+    background-color: #0b0d11;
+    color: #f5f5f4;
+    overflow-x: hidden;
+}
+
+/* Smooth focus & touch behavior */
+input,
+select,
+textarea,
+button {
+    touch-action: manipulation;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+}
+
+/* Native date & select icons in dark theme */
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.82) sepia(0.35) saturate(3) hue-rotate(355deg);
+    cursor: pointer;
+    opacity: 0.85;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+/* Slide menu & workspace transitions */
+#slide-menu-panel {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.slide-page-btn {
+    user-select: none;
+}
+
+/* Table & card subtle hover elevation */
+tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+article {
+    transition: border-color 0.2s ease, transform 0.15s ease;
+}
+
+article:hover {
+    transform: translateY(-1px);
+}
+
+/* Modal backdrop smooth appearance */
+#edit-tool-modal:not(.hidden),
+#photo-modal:not(.hidden),
+#ocr-modal:not(.hidden) {
+    animation: modalFadeIn 0.16s ease-out;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Print / Export clean support */
+@media print {
+    header,
+    #slide-menu-panel,
+    #add-tool-panel,
+    #toast {
+        display: none !important;
+    }
+
+    body {
+        background: #ffffff !important;
+        color: #111111 !important;
+    }
+}
