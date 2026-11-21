@@ -1,13 +1,15 @@
 // =========================================================
 // Dual Persistence Setup (IndexedDB + localStorage Fallback)
+// Stores BOTH PM Plan tools AND Breakdown History across all 12 months
 // =========================================================
 const DB_NAME = "ToolSyncPMDB";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_TOOLS = "pmTools";
+const STORE_BREAKDOWNS = "breakdownHistory";
 const LS_BACKUP_KEY = "ToolSyncPM_Persistent_State_v2";
 const CLEAN_SLATE_FLAG = "ToolSyncPM_CleanStart_Done_v1";
 
-function writeLocalStorageMirror(tools) {
+function writeLocalStorageMirror(tools, breakdowns = []) {
     try {
         const slimTools = tools.map((t) => ({
             ...t,
@@ -17,7 +19,8 @@ function writeLocalStorageMirror(tools) {
         }));
         const payload = JSON.stringify({
             savedAt: Date.now(),
-            tools: slimTools
+            tools: slimTools,
+            breakdowns
         });
         localStorage.setItem(LS_BACKUP_KEY, payload);
     } catch {
@@ -32,7 +35,8 @@ function writeLocalStorageMirror(tools) {
                 LS_BACKUP_KEY,
                 JSON.stringify({
                     savedAt: Date.now(),
-                    tools: textOnlyTools
+                    tools: textOnlyTools,
+                    breakdowns
                 })
             );
         } catch {
@@ -46,9 +50,10 @@ function readLocalStorageMirror() {
         const raw = localStorage.getItem(LS_BACKUP_KEY);
         if (!raw) return null;
         const parsed = JSON.parse(raw);
-        if (!parsed || !Array.isArray(parsed.tools)) return null;
+        if (!parsed) return null;
         return {
-            tools: parsed.tools
+            tools: Array.isArray(parsed.tools) ? parsed.tools : [],
+            breakdowns: Array.isArray(parsed.breakdowns) ? parsed.breakdowns : []
         };
     } catch {
         return null;
@@ -68,6 +73,10 @@ function openDB() {
                 const toolStore = db.createObjectStore(STORE_TOOLS, { keyPath: "id" });
                 toolStore.createIndex("scheduledDate", "scheduledDate", { unique: false });
             }
+            if (!db.objectStoreNames.contains(STORE_BREAKDOWNS)) {
+                const bdStore = db.createObjectStore(STORE_BREAKDOWNS, { keyPath: "id" });
+                bdStore.createIndex("date", "date", { unique: false });
+            }
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
@@ -86,7 +95,7 @@ async function getAllFromStore(storeName) {
     } catch {
         const mirror = readLocalStorageMirror();
         if (!mirror) return [];
-        return mirror.tools;
+        return storeName === STORE_BREAKDOWNS ? mirror.breakdowns : mirror.tools;
     }
 }
 
@@ -137,6 +146,7 @@ async function runOneTimeCleanSlate() {
         if (localStorage.getItem(CLEAN_SLATE_FLAG) === "true") return;
 
         await clearStore(STORE_TOOLS);
+        await clearStore(STORE_BREAKDOWNS);
 
         try {
             localStorage.removeItem(LS_BACKUP_KEY);
@@ -239,11 +249,14 @@ function compressImageFile(file, maxWidth = 900, quality = 0.72) {
 }
 
 // =========================================================
-// App State & Core PM Logic
+// App State & Core PM + Breakdown Logic
 // =========================================================
 const todayISO = formatDateISO(new Date());
 let allTools = [];
+let allBreakdowns = [];
 let activeDate = todayISO;
+let selectedBreakdownDate = todayISO;
+let editingBreakdownId = null;
 let tableShowAllDates = false;
 let moldSearchQuery = "";
 
@@ -251,14 +264,18 @@ const [initY, initM] = todayISO.split("-").map(Number);
 let calYear = initY;
 let calMonth = initM - 1;
 
+let bdCalYear = initY;
+let bdCalMonth = initM - 1;
+
 let activeModalToolId = null;
 let activeEditToolId = null;
 let draftBeforePhoto = null;
 let draftAfterPhoto = null;
 let lastRawOcrText = "";
 
-const toggleMenuBtn = document.getElementById("toggle-menu-btn");
-const appMenuBar = document.getElementById("app-menu-bar");
+const toggleSlideMenuBtn = document.getElementById("toggle-slide-menu-btn");
+const slideMenuPanel = document.getElementById("slide-menu-panel");
+const workspaceShell = document.getElementById("workspace-shell");
 const headerActiveDatePill = document.getElementById("header-active-date-pill");
 
 const dateInput = document.getElementById("selected-date");
@@ -279,12 +296,14 @@ const activeSearchBanner = document.getElementById("active-search-banner");
 const activeSearchText = document.getElementById("active-search-text");
 const searchMatchesInlineList = document.getElementById("search-matches-inline-list");
 
-if (toggleMenuBtn && appMenuBar) {
-    toggleMenuBtn.addEventListener("click", () => {
-        const isHidden = appMenuBar.classList.toggle("hidden");
-        toggleMenuBtn.setAttribute("aria-expanded", String(!isHidden));
-        if (!isHidden && headerMonthSearchInput) {
-            setTimeout(() => headerMonthSearchInput.focus(), 50);
+if (toggleSlideMenuBtn && slideMenuPanel && workspaceShell) {
+    toggleSlideMenuBtn.addEventListener("click", () => {
+        const isHidden = slideMenuPanel.classList.toggle("hidden");
+        toggleSlideMenuBtn.setAttribute("aria-expanded", String(!isHidden));
+        if (isHidden) {
+            workspaceShell.className = "max-w-[1440px] mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 gap-5 items-start";
+        } else {
+            workspaceShell.className = "max-w-[1440px] mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start";
         }
     });
 }
@@ -469,7 +488,6 @@ function renderHeaderMoldSearchDropdown() {
                                 <span class="text-stone-400 text-[11px]">${t.scheduledDate}</span>
                             </div>
                             <div class="text-xs text-stone-100 truncate mt-0.5">${t.moldName} • <span class="font-mono text-stone-400">${t.machineNo}</span></div>
-                            ${t.actualMold ? `<div class="text-[11px] font-mono text-emerald-300 truncate mt-0.5">Actual (Self): ${t.actualMold}</div>` : ""}
                         </div>
                         <span class="text-[11px] font-mono text-amber-300 shrink-0">Go &rarr;</span>
                     </button>
@@ -496,22 +514,13 @@ if (headerMoldSearchInput) {
         renderHeaderMoldSearchDropdown();
         renderAll();
     });
-
     headerMoldSearchInput.addEventListener("focus", () => {
-        if (moldSearchQuery.trim()) {
-            renderHeaderMoldSearchDropdown();
-        }
+        if (moldSearchQuery.trim()) renderHeaderMoldSearchDropdown();
     });
 }
-
-if (clearMoldSearchBtn) {
-    clearMoldSearchBtn.addEventListener("click", clearAllMoldSearch);
-}
-
+if (clearMoldSearchBtn) clearMoldSearchBtn.addEventListener("click", clearAllMoldSearch);
 const resetAllSearchBtn = document.getElementById("reset-all-search-btn");
-if (resetAllSearchBtn) {
-    resetAllSearchBtn.addEventListener("click", clearAllMoldSearch);
-}
+if (resetAllSearchBtn) resetAllSearchBtn.addEventListener("click", clearAllMoldSearch);
 
 document.addEventListener("click", (e) => {
     if (
@@ -523,7 +532,6 @@ document.addEventListener("click", (e) => {
     }
 });
 
-// Self Actual Mold Save Handler directly from Table Row
 async function saveActualMoldSelf(toolId, value) {
     const tool = allTools.find((t) => t.id === toolId);
     if (!tool) return;
@@ -533,14 +541,8 @@ async function saveActualMoldSelf(toolId, value) {
 
     tool.actualMold = cleaned;
     await putToStore(STORE_TOOLS, tool);
-    writeLocalStorageMirror(allTools);
-
-    if (cleaned) {
-        showToast(`Saved actual mold: ${cleaned}`);
-    } else {
-        showToast("Actual mold cleared");
-    }
-
+    writeLocalStorageMirror(allTools, allBreakdowns);
+    showToast(cleaned ? `Saved actual mold: ${cleaned}` : "Actual mold cleared");
     renderCalendarGrid();
     renderClickedDateStatusBanner(allTools.filter((t) => t.scheduledDate === activeDate));
 }
@@ -558,7 +560,7 @@ async function deleteToolRecord(toolId, skipConfirm = false) {
 
     allTools = allTools.filter((t) => t.id !== toolId);
     await deleteByIdFromStore(STORE_TOOLS, toolId);
-    writeLocalStorageMirror(allTools);
+    writeLocalStorageMirror(allTools, allBreakdowns);
 
     if (activeModalToolId === toolId) closePhotoModal();
     if (activeEditToolId === toolId) closeEditModal();
@@ -568,6 +570,270 @@ async function deleteToolRecord(toolId, skipConfirm = false) {
     return true;
 }
 
+// =========================================================
+// Breakdown Data CRUD + 12-Month Calendar
+// =========================================================
+const breakdownPanel = document.getElementById("breakdown-entry-panel");
+const breakdownForm = document.getElementById("breakdown-data-form");
+const bdDateInput = document.getElementById("bd-date-input");
+const bdToolCodeInput = document.getElementById("bd-tool-code-input");
+const bdMachineNoInput = document.getElementById("bd-machine-no-input");
+const bdIssueInput = document.getElementById("bd-issue-input");
+const bdSubmitBtn = document.getElementById("bd-submit-btn");
+const breakdownFormHeading = document.getElementById("breakdown-form-heading");
+
+function openBreakdownForm(dateOverride = null, editItem = null) {
+    if (editItem) {
+        editingBreakdownId = editItem.id;
+        bdDateInput.value = editItem.date || selectedBreakdownDate || todayISO;
+        bdToolCodeInput.value = editItem.toolCode || "";
+        bdMachineNoInput.value = editItem.machineNo || "";
+        bdIssueInput.value = editItem.issue || "";
+        bdSubmitBtn.textContent = "Update Breakdown";
+        breakdownFormHeading.textContent = `Edit Breakdown (${editItem.toolCode})`;
+    } else {
+        editingBreakdownId = null;
+        bdDateInput.value = dateOverride || selectedBreakdownDate || activeDate || todayISO;
+        bdToolCodeInput.value = "";
+        bdMachineNoInput.value = "";
+        bdIssueInput.value = "";
+        bdSubmitBtn.textContent = "Save Breakdown";
+        breakdownFormHeading.textContent = "Enter Breakdown Data";
+    }
+    breakdownPanel.classList.remove("hidden");
+    breakdownPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+document.getElementById("open-breakdown-entry-btn").addEventListener("click", () => {
+    if (!breakdownPanel.classList.contains("hidden") && !editingBreakdownId) {
+        breakdownPanel.classList.add("hidden");
+    } else {
+        openBreakdownForm(selectedBreakdownDate);
+    }
+});
+
+document.getElementById("close-breakdown-panel-btn").addEventListener("click", () => {
+    editingBreakdownId = null;
+    breakdownPanel.classList.add("hidden");
+});
+
+breakdownForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const dateVal = bdDateInput.value || selectedBreakdownDate || todayISO;
+    const toolVal = bdToolCodeInput.value.trim().toUpperCase();
+    const machVal = bdMachineNoInput.value.trim().toUpperCase();
+    const issueVal = bdIssueInput.value.trim();
+
+    if (!toolVal || !machVal || !issueVal) return;
+
+    if (editingBreakdownId) {
+        const existing = allBreakdowns.find((b) => b.id === editingBreakdownId);
+        if (existing) {
+            existing.date = dateVal;
+            existing.toolCode = toolVal;
+            existing.machineNo = machVal;
+            existing.issue = issueVal;
+            await putToStore(STORE_BREAKDOWNS, existing);
+            showToast(`Updated breakdown ${toolVal}`);
+        }
+        editingBreakdownId = null;
+    } else {
+        const newBd = {
+            id: `bd_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+            date: dateVal,
+            toolCode: toolVal,
+            machineNo: machVal,
+            issue: issueVal,
+            createdAt: new Date().toISOString()
+        };
+        allBreakdowns.push(newBd);
+        await putToStore(STORE_BREAKDOWNS, newBd);
+        showToast(`Saved breakdown to ${dateVal}`);
+    }
+
+    selectedBreakdownDate = dateVal;
+    const [y, m] = dateVal.split("-").map(Number);
+    bdCalYear = y;
+    bdCalMonth = m - 1;
+
+    writeLocalStorageMirror(allTools, allBreakdowns);
+    breakdownForm.reset();
+    breakdownPanel.classList.add("hidden");
+    await refreshAll();
+});
+
+async function deleteBreakdownRecord(bdId) {
+    const target = allBreakdowns.find((b) => b.id === bdId);
+    if (!target) return;
+    if (!window.confirm(`Delete breakdown "${target.toolCode} — ${target.issue}" on ${target.date}?`)) {
+        return;
+    }
+    allBreakdowns = allBreakdowns.filter((b) => b.id !== bdId);
+    await deleteByIdFromStore(STORE_BREAKDOWNS, bdId);
+    writeLocalStorageMirror(allTools, allBreakdowns);
+    await refreshAll();
+    showToast(`Deleted breakdown ${target.toolCode}`);
+}
+
+function editBreakdownRecord(bdId) {
+    const target = allBreakdowns.find((b) => b.id === bdId);
+    if (!target) return;
+    openBreakdownForm(target.date, target);
+}
+
+function selectBreakdownCalendarDate(dateStr) {
+    selectedBreakdownDate = dateStr;
+    const [y, m] = dateStr.split("-").map(Number);
+    bdCalYear = y;
+    bdCalMonth = m - 1;
+    renderBreakdownSection();
+}
+
+function setBreakdownCalendarMonth(year, monthIndex) {
+    const dt = new Date(year, monthIndex, 1);
+    bdCalYear = dt.getFullYear();
+    bdCalMonth = dt.getMonth();
+    const prefix = getYearMonthPrefix(bdCalYear, bdCalMonth);
+    if (!selectedBreakdownDate.startsWith(prefix)) {
+        selectedBreakdownDate = `${prefix}-01`;
+    }
+    renderBreakdownSection();
+}
+
+document.getElementById("bd-cal-prev-btn").addEventListener("click", () => {
+    setBreakdownCalendarMonth(bdCalYear, bdCalMonth - 1);
+});
+document.getElementById("bd-cal-next-btn").addEventListener("click", () => {
+    setBreakdownCalendarMonth(bdCalYear, bdCalMonth + 1);
+});
+
+function renderBreakdownSection() {
+    // Present Month Breakdown Data (based on calendar's active month or today's month)
+    const presentPrefix = getYearMonthPrefix(calYear, calMonth);
+    const presentBreakdowns = allBreakdowns
+        .filter((b) => (b.date || "").startsWith(presentPrefix))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+    const pmLabel = document.getElementById("present-month-bd-label");
+    const pmCount = document.getElementById("present-month-bd-count");
+    const pmSummary = document.getElementById("present-month-bd-summary");
+    const statMonthBd = document.getElementById("stat-month-breakdowns");
+
+    if (pmLabel) pmLabel.textContent = `Present Month Breakdown (${MONTH_SHORT[calMonth]} ${calYear})`;
+    if (pmCount) pmCount.textContent = String(presentBreakdowns.length);
+    if (statMonthBd) statMonthBd.textContent = String(presentBreakdowns.length);
+
+    if (pmSummary) {
+        if (presentBreakdowns.length === 0) {
+            pmSummary.textContent = `No breakdown records for ${MONTH_NAMES[calMonth]} ${calYear}.`;
+        } else {
+            pmSummary.innerHTML = presentBreakdowns
+                .slice(0, 4)
+                .map(
+                    (b) =>
+                        `<div class="text-[11px] font-mono text-rose-200 truncate">• ${b.date}: <strong>${b.toolCode}</strong> (${b.machineNo}) — ${b.issue}</div>`
+                )
+                .join("");
+        }
+    }
+
+    // 12-Month Pills inside Breakdown
+    const bdPillsEl = document.getElementById("bd-twelve-month-pills");
+    if (bdPillsEl) {
+        bdPillsEl.innerHTML = MONTH_SHORT.map((shortM, idx) => {
+            const pfx = getYearMonthPrefix(bdCalYear, idx);
+            const cnt = allBreakdowns.filter((b) => (b.date || "").startsWith(pfx)).length;
+            const active = idx === bdCalMonth;
+            return `
+                <button
+                    type="button"
+                    onclick="setBreakdownCalendarMonth(${bdCalYear}, ${idx})"
+                    class="shrink-0 px-2 py-1 rounded border transition flex items-center gap-1 ${
+                        active
+                            ? "border-rose-400 bg-rose-500/20 text-rose-200 font-bold"
+                            : "border-stone-800 bg-[#11151d] text-stone-400 hover:text-stone-200"
+                    }"
+                >
+                    <span>${shortM}</span>
+                    <span class="px-1 rounded bg-stone-800 text-[9px]">${cnt}</span>
+                </button>
+            `;
+        }).join("");
+    }
+
+    const bdMonthLabel = document.getElementById("bd-cal-month-label");
+    if (bdMonthLabel) bdMonthLabel.textContent = `${MONTH_SHORT[bdCalMonth]} ${bdCalYear}`;
+
+    const bdGridEl = document.getElementById("bd-calendar-grid");
+    if (bdGridEl) {
+        const firstDay = new Date(bdCalYear, bdCalMonth, 1).getDay();
+        const totalDays = new Date(bdCalYear, bdCalMonth + 1, 0).getDate();
+        const bdByDate = new Map();
+        for (const b of allBreakdowns) {
+            const arr = bdByDate.get(b.date) || [];
+            arr.push(b);
+            bdByDate.set(b.date, arr);
+        }
+
+        const cells = [];
+        for (let i = 0; i < firstDay; i++) {
+            cells.push(`<div class="h-7 rounded bg-[#11151d]/40"></div>`);
+        }
+        for (let d = 1; d <= totalDays; d++) {
+            const iso = `${bdCalYear}-${String(bdCalMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            const hasBd = (bdByDate.get(iso) || []).length > 0;
+            const isSel = iso === selectedBreakdownDate;
+            cells.push(`
+                <button
+                    type="button"
+                    onclick="selectBreakdownCalendarDate('${iso}')"
+                    class="h-7 rounded text-[11px] font-mono flex items-center justify-center relative border transition ${
+                        isSel
+                            ? "border-rose-400 bg-rose-500/25 text-white font-bold"
+                            : hasBd
+                            ? "border-rose-500/40 bg-rose-950/40 text-rose-200"
+                            : "border-stone-800/70 bg-[#11151d] text-stone-400 hover:border-stone-600"
+                    }"
+                >
+                    <span>${d}</span>
+                    ${hasBd ? `<span class="w-1 h-1 rounded-full bg-rose-400 absolute bottom-0.5"></span>` : ""}
+                </button>
+            `);
+        }
+        bdGridEl.innerHTML = cells.join("");
+    }
+
+    // Breakdown Mould History List (All months saved)
+    const bdListEl = document.getElementById("menu-breakdown-history-list");
+    if (bdListEl) {
+        const sortedAll = [...allBreakdowns].sort((a, b) => b.date.localeCompare(a.date));
+        if (sortedAll.length === 0) {
+            bdListEl.innerHTML = `<div class="text-xs font-mono text-stone-500 py-2">No breakdown history yet. Click + Enter Data.</div>`;
+        } else {
+            bdListEl.innerHTML = sortedAll
+                .map(
+                    (b) => `
+                    <div class="rounded-lg border border-stone-800 bg-[#0b0d11] p-2.5 space-y-1">
+                        <div class="flex items-center justify-between gap-2 text-[11px] font-mono">
+                            <span class="text-rose-300 font-bold">${b.toolCode} • ${b.machineNo}</span>
+                            <span class="text-stone-400">${b.date}</span>
+                        </div>
+                        <div class="text-xs text-stone-200">${b.issue}</div>
+                        <div class="flex items-center justify-end gap-2 pt-1 text-[11px] font-mono">
+                            <button type="button" onclick="editBreakdownRecord('${b.id}')" class="text-sky-300 hover:underline">Edit</button>
+                            <button type="button" onclick="deleteBreakdownRecord('${b.id}')" class="text-rose-300 hover:underline">Delete</button>
+                        </div>
+                    </div>
+                `
+                )
+                .join("");
+        }
+    }
+}
+
+// =========================================================
+// Edit PM Plan Modal
+// =========================================================
 const editModal = document.getElementById("edit-tool-modal");
 const editModalHeading = document.getElementById("edit-modal-heading");
 const editToolForm = document.getElementById("edit-tool-form");
@@ -604,7 +870,6 @@ function closeEditModal() {
 
 document.getElementById("close-edit-modal-btn").addEventListener("click", closeEditModal);
 document.getElementById("cancel-edit-btn").addEventListener("click", closeEditModal);
-
 document.getElementById("delete-from-edit-btn").addEventListener("click", async () => {
     if (!activeEditToolId) return;
     await deleteToolRecord(activeEditToolId);
@@ -629,7 +894,7 @@ editToolForm.addEventListener("submit", async (e) => {
     }
 
     await putToStore(STORE_TOOLS, tool);
-    writeLocalStorageMirror(allTools);
+    writeLocalStorageMirror(allTools, allBreakdowns);
 
     const targetDate = tool.scheduledDate;
     closeEditModal();
@@ -643,7 +908,6 @@ async function handleMachineRunning(toolId) {
     if (!targetTool) return;
 
     const currentSlotDate = targetTool.scheduledDate;
-
     const futureCandidates = allTools
         .filter((t) => t.id !== targetTool.id && t.scheduledDate > currentSlotDate && t.status === "Scheduled")
         .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
@@ -682,14 +946,10 @@ function setCalendarMonth(year, monthIndex, selectFirstDayIfOutside = false) {
 
     if (yearSelect) {
         const existingYears = Array.from(yearSelect.options).map((o) => Number(o.value));
-        if (!existingYears.includes(calYear)) {
-            populateYearOptions(calYear);
-        }
+        if (!existingYears.includes(calYear)) populateYearOptions(calYear);
         yearSelect.value = String(calYear);
     }
-    if (monthSelect) {
-        monthSelect.value = String(calMonth);
-    }
+    if (monthSelect) monthSelect.value = String(calMonth);
 
     const ymPrefix = getYearMonthPrefix(calYear, calMonth);
     if (selectFirstDayIfOutside && !activeDate.startsWith(ymPrefix)) {
@@ -701,25 +961,10 @@ function setCalendarMonth(year, monthIndex, selectFirstDayIfOutside = false) {
     renderAll();
 }
 
-document.getElementById("prev-month-btn").addEventListener("click", () => {
-    setCalendarMonth(calYear, calMonth - 1, true);
-});
-
-document.getElementById("next-month-btn").addEventListener("click", () => {
-    setCalendarMonth(calYear, calMonth + 1, true);
-});
-
-if (monthSelect) {
-    monthSelect.addEventListener("change", (e) => {
-        setCalendarMonth(calYear, Number(e.target.value), true);
-    });
-}
-
-if (yearSelect) {
-    yearSelect.addEventListener("change", (e) => {
-        setCalendarMonth(Number(e.target.value), calMonth, true);
-    });
-}
+document.getElementById("prev-month-btn").addEventListener("click", () => setCalendarMonth(calYear, calMonth - 1, true));
+document.getElementById("next-month-btn").addEventListener("click", () => setCalendarMonth(calYear, calMonth + 1, true));
+if (monthSelect) monthSelect.addEventListener("change", (e) => setCalendarMonth(calYear, Number(e.target.value), true));
+if (yearSelect) yearSelect.addEventListener("change", (e) => setCalendarMonth(Number(e.target.value), calMonth, true));
 
 document.getElementById("jump-today-btn").addEventListener("click", () => {
     activeDate = todayISO;
@@ -729,6 +974,9 @@ document.getElementById("jump-today-btn").addEventListener("click", () => {
     setCalendarMonth(y, m - 1, false);
 });
 
+// =========================================================
+// Photo to Text Converter Modal
+// =========================================================
 const ocrModal = document.getElementById("ocr-modal");
 const planPhotoInput = document.getElementById("plan-photo-input");
 const planPhotoPreview = document.getElementById("plan-photo-preview");
@@ -754,11 +1002,7 @@ document.getElementById("close-ocr-modal-btn").addEventListener("click", () => {
 });
 
 function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
-    const lines = rawText
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-
+    const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const [baseYear, baseMonth] = monthStartISO.split("-");
     const dateMap = new Map();
     const ungroupedMolds = [];
@@ -767,22 +1011,13 @@ function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
     const dateRegex = /\b(\d{1,2})[\/\-\.](\d{1,2})(?:[\/\-\.](\d{2,4}))?\b/;
 
     for (const line of lines) {
-        const foundMolds = (line.match(moldTokenRegex) || []).map((m) =>
-            m.toUpperCase().replace(/\s+/g, "-")
-        );
+        const foundMolds = (line.match(moldTokenRegex) || []).map((m) => m.toUpperCase().replace(/\s+/g, "-"));
         const dateMatch = line.match(dateRegex);
 
         if (dateMatch && foundMolds.length > 0) {
             const dayNum = String(Math.min(31, Math.max(1, parseInt(dateMatch[1], 10)))).padStart(2, "0");
-            const monthNum = dateMatch[2]
-                ? String(Math.min(12, Math.max(1, parseInt(dateMatch[2], 10)))).padStart(2, "0")
-                : baseMonth;
-            const yearNum = dateMatch[3]
-                ? dateMatch[3].length === 2
-                    ? `20${dateMatch[3]}`
-                    : dateMatch[3]
-                : baseYear;
-
+            const monthNum = dateMatch[2] ? String(Math.min(12, Math.max(1, parseInt(dateMatch[2], 10)))).padStart(2, "0") : baseMonth;
+            const yearNum = dateMatch[3] ? (dateMatch[3].length === 2 ? `20${dateMatch[3]}` : dateMatch[3]) : baseYear;
             const iso = `${yearNum}-${monthNum}-${dayNum}`;
             const existing = dateMap.get(iso) || [];
             for (const code of foundMolds) {
@@ -798,12 +1033,10 @@ function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
 
     const outputLines = [];
     if (dateMap.size > 0) {
-        const sortedDates = Array.from(dateMap.keys()).sort();
-        for (const d of sortedDates) {
+        for (const d of Array.from(dateMap.keys()).sort()) {
             outputLines.push(`${d} | ${dateMap.get(d).join(", ")}`);
         }
     }
-
     if (ungroupedMolds.length > 0) {
         const startOffset = outputLines.length;
         for (let i = 0; i < ungroupedMolds.length; i += 3) {
@@ -812,45 +1045,32 @@ function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
             outputLines.push(`${dayDate} | ${chunk.join(", ")}`);
         }
     }
-
     if (outputLines.length === 0) {
-        return lines
-            .map((line, idx) => `${addDaysISO(monthStartISO, Math.floor(idx / 3))} | ${line}`)
-            .join("\n");
+        return lines.map((line, idx) => `${addDaysISO(monthStartISO, Math.floor(idx / 3))} | ${line}`).join("\n");
     }
-
     return outputLines.join("\n");
 }
 
 document.getElementById("auto-distribute-80-btn").addEventListener("click", () => {
     const startISO = planStartDateInput.value || getMonthFirstDayISO(activeDate);
     const currentText = datewiseTextarea.value.trim();
-
     const extracted = [];
-    const lines = currentText.split(/\r?\n/);
-    for (const line of lines) {
+    for (const line of currentText.split(/\r?\n/)) {
         const contentPart = line.includes("|") ? line.split("|").slice(1).join("|") : line;
-        const parts = contentPart
-            .split(/[,;]+/)
-            .map((s) => s.trim())
-            .filter(Boolean);
-        for (const p of parts) {
+        for (const p of contentPart.split(/[,;]+/).map((s) => s.trim()).filter(Boolean)) {
             extracted.push(p);
         }
     }
-
     if (extracted.length === 0) {
         showToast("Enter or scan mold numbers first");
         return;
     }
-
     const mappedLines = [];
     for (let i = 0; i < extracted.length; i += 3) {
         const slice = extracted.slice(i, i + 3);
         const slotDate = addDaysISO(startISO, Math.floor(i / 3));
         mappedLines.push(`${slotDate} | ${slice.join(", ")}`);
     }
-
     datewiseTextarea.value = mappedLines.join("\n");
     updateParsedCounter();
     showToast(`Mapped ${extracted.length} molds (3/day)`);
@@ -871,9 +1091,7 @@ planPhotoInput.addEventListener("change", async (e) => {
     ocrProgressBar.style.width = "5%";
 
     try {
-        if (typeof Tesseract === "undefined") {
-            throw new Error("OCR engine unavailable offline");
-        }
+        if (typeof Tesseract === "undefined") throw new Error("OCR engine unavailable offline");
         const result = await Tesseract.recognize(file, "eng", {
             logger: (m) => {
                 if (m.status === "recognizing text" && typeof m.progress === "number") {
@@ -889,7 +1107,7 @@ planPhotoInput.addEventListener("change", async (e) => {
         datewiseTextarea.value = convertOcrTextToDateWiseFormat(lastRawOcrText, startISO);
         ocrStatusText.textContent = "Scan complete — review text below";
         updateParsedCounter();
-        showToast("Plan photo converted to date-wise text");
+        showToast("Plan photo converted to text");
     } catch {
         ocrStatusText.textContent = "Could not auto-read image; edit manually or use Auto-Map.";
         showToast("OCR scan failed — edit manually");
@@ -898,18 +1116,11 @@ planPhotoInput.addEventListener("change", async (e) => {
 
 function parseDateWiseLines(text) {
     const entries = [];
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-
-    for (const line of lines) {
+    for (const line of text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
         const match = line.match(/^(\d{4}-\d{2}-\d{2})\s*\|\s*(.+)$/);
         if (!match) continue;
         const dateStr = match[1];
-        const molds = match[2]
-            .split(/[,;]+/)
-            .map((m) => m.trim())
-            .filter(Boolean);
-
-        for (const moldCode of molds) {
+        for (const moldCode of match[2].split(/[,;]+/).map((m) => m.trim()).filter(Boolean)) {
             entries.push({ dateStr, moldCode });
         }
     }
@@ -943,9 +1154,7 @@ document.getElementById("import-replace-btn").addEventListener("click", async ()
     }
 
     const affectedMonths = new Set(parsed.map((p) => p.dateStr.slice(0, 7)));
-    const existingInTargetMonths = allTools.filter((t) =>
-        affectedMonths.has(t.scheduledDate.slice(0, 7))
-    );
+    const existingInTargetMonths = allTools.filter((t) => affectedMonths.has(t.scheduledDate.slice(0, 7)));
     for (const oldItem of existingInTargetMonths) {
         await deleteByIdFromStore(STORE_TOOLS, oldItem.id);
     }
@@ -980,6 +1189,9 @@ document.getElementById("import-replace-btn").addEventListener("click", async ()
     showToast(`Saved ${parsed.length} molds to calendar dates`);
 });
 
+// =========================================================
+// Before / After Photo & Completion Modal
+// =========================================================
 const photoModal = document.getElementById("photo-modal");
 const modalTitle = document.getElementById("modal-tool-title");
 const beforeInput = document.getElementById("before-photo-input");
@@ -1077,7 +1289,7 @@ async function saveModalChanges(markCompleted) {
     }
 
     await putToStore(STORE_TOOLS, tool);
-    writeLocalStorageMirror(allTools);
+    writeLocalStorageMirror(allTools, allBreakdowns);
     closePhotoModal();
     await refreshAll();
     showToast(markCompleted ? "PM marked completed" : "Photos saved");
@@ -1100,18 +1312,14 @@ function getStatusBadge(status) {
 function selectCalendarDate(dateStr, syncTextInput = true) {
     activeDate = dateStr;
     if (dateInput) dateInput.value = dateStr;
-    if (syncTextInput && headerDateSearchInput) {
-        headerDateSearchInput.value = dateStr;
-    }
+    if (syncTextInput && headerDateSearchInput) headerDateSearchInput.value = dateStr;
     const [y, m] = dateStr.split("-").map(Number);
     calYear = y;
     calMonth = m - 1;
     if (monthSelect) monthSelect.value = String(calMonth);
     if (yearSelect) {
         const existingYears = Array.from(yearSelect.options).map((o) => Number(o.value));
-        if (!existingYears.includes(calYear)) {
-            populateYearOptions(calYear);
-        }
+        if (!existingYears.includes(calYear)) populateYearOptions(calYear);
         yearSelect.value = String(calYear);
     }
     renderAll();
@@ -1214,6 +1422,66 @@ function renderCalendarGrid() {
     grid.innerHTML = cells.join("");
 }
 
+function renderSlideMenuLists(monthTools) {
+    // 1. Running Month PM Plan (with Edit & Delete)
+    const runningTitle = document.getElementById("menu-running-month-title");
+    if (runningTitle) runningTitle.textContent = `${MONTH_SHORT[calMonth]} ${calYear} PM Plan`;
+
+    const runningListEl = document.getElementById("menu-running-pm-list");
+    if (runningListEl) {
+        if (monthTools.length === 0) {
+            runningListEl.innerHTML = `<div class="text-xs font-mono text-stone-500">No PM plans in ${MONTH_SHORT[calMonth]}.</div>`;
+        } else {
+            runningListEl.innerHTML = [...monthTools]
+                .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate))
+                .map(
+                    (t) => `
+                    <div class="rounded-lg border border-stone-800 bg-[#0b0d11] px-2.5 py-2 flex items-center justify-between gap-2 text-xs font-mono">
+                        <button type="button" onclick="selectCalendarDate('${t.scheduledDate}')" class="text-left min-w-0 flex-1">
+                            <div class="text-amber-300 font-bold truncate">${t.toolCode} • <span class="text-stone-400">${t.scheduledDate}</span></div>
+                            <div class="text-[11px] text-stone-300 truncate">${t.moldName}</div>
+                        </button>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <button type="button" onclick="openEditModal('${t.id}')" class="px-1.5 py-0.5 rounded bg-stone-800 text-sky-300 hover:bg-stone-700">Edit</button>
+                            <button type="button" onclick="deleteToolRecord('${t.id}')" class="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 hover:bg-rose-500/25">Del</button>
+                        </div>
+                    </div>
+                `
+                )
+                .join("");
+        }
+    }
+
+    // 2. PM Done Mould History
+    const doneTools = allTools
+        .filter((t) => t.status === "PM Completed")
+        .sort((a, b) => b.scheduledDate.localeCompare(a.scheduledDate));
+
+    const doneCountEl = document.getElementById("menu-pm-done-count");
+    if (doneCountEl) doneCountEl.textContent = String(doneTools.length);
+
+    const doneListEl = document.getElementById("menu-pm-done-list");
+    if (doneListEl) {
+        if (doneTools.length === 0) {
+            doneListEl.innerHTML = `<div class="text-xs font-mono text-stone-500">No completed PM molds yet.</div>`;
+        } else {
+            doneListEl.innerHTML = doneTools
+                .map(
+                    (t) => `
+                    <div class="rounded-lg border border-emerald-500/25 bg-[#0b0d11] px-2.5 py-2 flex items-center justify-between gap-2 text-xs font-mono">
+                        <button type="button" onclick="selectCalendarDate('${t.scheduledDate}')" class="text-left min-w-0 flex-1">
+                            <div class="text-emerald-300 font-bold truncate">${t.toolCode} • ${t.scheduledDate}</div>
+                            <div class="text-[11px] text-stone-300 truncate">${t.actualMold ? `Self: ${t.actualMold}` : t.moldName}</div>
+                        </button>
+                        <button type="button" onclick="openEditModal('${t.id}')" class="px-1.5 py-0.5 rounded bg-stone-800 text-sky-300 shrink-0">Edit</button>
+                    </div>
+                `
+                )
+                .join("");
+        }
+    }
+}
+
 function renderClickedDateStatusBanner(selectedDayTools) {
     const badgeEl = document.getElementById("clicked-date-badge");
     const summaryEl = document.getElementById("clicked-date-summary");
@@ -1229,22 +1497,14 @@ function renderClickedDateStatusBanner(selectedDayTools) {
 
     const doneTools = selectedDayTools.filter((t) => t.status === "PM Completed");
     const pendingTools = selectedDayTools.filter((t) => t.status !== "PM Completed");
-
-    const formatToolLabel = (t) =>
-        t.actualMold ? `${t.toolCode} → Self: ${t.actualMold}` : `${t.toolCode} (${t.moldName})`;
+    const formatToolLabel = (t) => (t.actualMold ? `${t.toolCode} → Self: ${t.actualMold}` : `${t.toolCode} (${t.moldName})`);
 
     if (doneTools.length === selectedDayTools.length) {
-        summaryEl.innerHTML = `<span class="text-emerald-400 font-bold">&#10004; PM Completed on ${activeDate}</span> — ${doneTools
-            .map(formatToolLabel)
-            .join(", ")}`;
+        summaryEl.innerHTML = `<span class="text-emerald-400 font-bold">&#10004; PM Completed on ${activeDate}</span> — ${doneTools.map(formatToolLabel).join(", ")}`;
     } else if (doneTools.length > 0) {
-        summaryEl.innerHTML = `<span class="text-amber-300 font-bold">Partial PM on ${activeDate}:</span> ${doneTools.length} completed (${doneTools
-            .map(formatToolLabel)
-            .join(", ")}), ${pendingTools.length} pending (${pendingTools.map(formatToolLabel).join(", ")})`;
+        summaryEl.innerHTML = `<span class="text-amber-300 font-bold">Partial PM on ${activeDate}:</span> ${doneTools.length} completed, ${pendingTools.length} pending`;
     } else {
-        summaryEl.innerHTML = `<span class="text-amber-300 font-bold">Scheduled on ${activeDate}:</span> ${selectedDayTools
-            .map((t) => `${formatToolLabel(t)} [${t.status}]`)
-            .join(", ")}`;
+        summaryEl.innerHTML = `<span class="text-amber-300 font-bold">Scheduled on ${activeDate}:</span> ${selectedDayTools.map((t) => `${formatToolLabel(t)} [${t.status}]`).join(", ")}`;
     }
 
     quickActionsEl.innerHTML = selectedDayTools
@@ -1252,20 +1512,8 @@ function renderClickedDateStatusBanner(selectedDayTools) {
             (t) => `
             <span class="inline-flex items-center gap-1 rounded-lg bg-[#11151d] border border-stone-800 px-2 py-1 text-[11px] font-mono">
                 <span class="text-amber-300 font-semibold">${t.toolCode}</span>
-                <button
-                    type="button"
-                    onclick="openEditModal('${t.id}')"
-                    class="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-sky-300 transition"
-                >
-                    Edit
-                </button>
-                <button
-                    type="button"
-                    onclick="deleteToolRecord('${t.id}')"
-                    class="px-1.5 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 transition"
-                >
-                    Delete
-                </button>
+                <button type="button" onclick="openEditModal('${t.id}')" class="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-sky-300 transition">Edit</button>
+                <button type="button" onclick="deleteToolRecord('${t.id}')" class="px-1.5 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 transition">Delete</button>
             </span>
         `
         )
@@ -1273,9 +1521,7 @@ function renderClickedDateStatusBanner(selectedDayTools) {
 }
 
 function renderAll() {
-    if (headerActiveDatePill) {
-        headerActiveDatePill.textContent = activeDate;
-    }
+    if (headerActiveDatePill) headerActiveDatePill.textContent = activeDate;
 
     renderCalendarGrid();
 
@@ -1292,11 +1538,7 @@ function renderAll() {
                           const [y, m] = (t.scheduledDate || "").split("-").map(Number);
                           const mLabel = m ? `${MONTH_SHORT[m - 1]} ${y}` : t.scheduledDate;
                           return `
-                              <button
-                                  type="button"
-                                  onclick="jumpToToolAcrossMonths('${t.id}')"
-                                  class="rounded-xl border border-stone-800 bg-[#0b0d11] hover:border-amber-400 p-3 text-left transition flex items-center justify-between gap-2"
-                              >
+                              <button type="button" onclick="jumpToToolAcrossMonths('${t.id}')" class="rounded-xl border border-stone-800 bg-[#0b0d11] hover:border-amber-400 p-3 text-left transition flex items-center justify-between gap-2">
                                   <div class="min-w-0">
                                       <div class="font-mono text-xs flex items-center gap-1.5">
                                           <span class="font-bold text-amber-400">${t.toolCode}</span>
@@ -1304,7 +1546,6 @@ function renderAll() {
                                           <span class="text-stone-400 text-[11px]">${t.scheduledDate}</span>
                                       </div>
                                       <div class="text-xs text-stone-200 truncate mt-0.5">${t.moldName} (${t.machineNo})</div>
-                                      ${t.actualMold ? `<div class="text-[11px] font-mono text-emerald-300 truncate mt-0.5">Actual (Self): ${t.actualMold}</div>` : ""}
                                   </div>
                                   <span class="text-[11px] font-mono text-amber-300 shrink-0">Open &rarr;</span>
                               </button>
@@ -1329,6 +1570,8 @@ function renderAll() {
     document.getElementById("stat-swapped-count").textContent = String(swappedInMonth);
     document.getElementById("stat-month-tools").textContent = String(monthTools.length);
 
+    renderSlideMenuLists(monthTools);
+    renderBreakdownSection();
     renderClickedDateStatusBanner(selectedDayTools);
 
     document.getElementById("daily-section-heading").textContent = `Mold PM on ${activeDate}`;
@@ -1350,20 +1593,8 @@ function renderAll() {
                             <span class="font-mono text-sm font-bold text-amber-400">${t.toolCode}</span>
                             <div class="flex items-center gap-1.5">
                                 ${getStatusBadge(t.status)}
-                                <button
-                                    type="button"
-                                    onclick="openEditModal('${t.id}')"
-                                    class="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 transition"
-                                >
-                                    Edit
-                                </button>
-                                <button
-                                    type="button"
-                                    onclick="deleteToolRecord('${t.id}')"
-                                    class="px-2 py-0.5 rounded text-[11px] font-mono bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/35 transition"
-                                >
-                                    Delete
-                                </button>
+                                <button type="button" onclick="openEditModal('${t.id}')" class="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 transition">Edit</button>
+                                <button type="button" onclick="deleteToolRecord('${t.id}')" class="px-2 py-0.5 rounded text-[11px] font-mono bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/35 transition">Delete</button>
                             </div>
                         </div>
                         <h3 class="font-bold text-base text-white">${t.moldName}</h3>
@@ -1379,12 +1610,8 @@ function renderAll() {
                             <span>After: ${t.afterPhoto ? "&#10004; Attached" : "—"}</span>
                         </div>
                         <div class="grid grid-cols-2 gap-2 pt-1">
-                            <button type="button" onclick="openPhotoModal('${t.id}')" class="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-100 font-mono text-xs font-semibold transition">
-                                Photos / PM Done
-                            </button>
-                            <button type="button" onclick="handleMachineRunning('${t.id}')" class="px-3 py-2 rounded-lg border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-mono text-xs font-semibold transition">
-                                Running / Swap
-                            </button>
+                            <button type="button" onclick="openPhotoModal('${t.id}')" class="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-100 font-mono text-xs font-semibold transition">Photos / PM Done</button>
+                            <button type="button" onclick="handleMachineRunning('${t.id}')" class="px-3 py-2 rounded-lg border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-mono text-xs font-semibold transition">Running / Swap</button>
                         </div>
                     </div>
                 </article>
@@ -1393,22 +1620,18 @@ function renderAll() {
             .join("");
     }
 
-    const rowsToShow = q
-        ? [...allMonthMatches]
-        : tableShowAllDates
-        ? [...allTools]
-        : [...monthTools];
+    const rowsToShow = q ? [...allMonthMatches] : tableShowAllDates ? [...allTools] : [...monthTools];
     rowsToShow.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
 
     document.getElementById("pm-schedule-heading").textContent = q
         ? `Search Results Across All Months ("${q}") (${rowsToShow.length})`
         : tableShowAllDates
-        ? `PM Schedule — All Months (${rowsToShow.length})`
-        : `PM Schedule — ${MONTH_NAMES[calMonth]} ${calYear} (${rowsToShow.length})`;
+        ? `All Month PM Plan (${rowsToShow.length})`
+        : `PM Plan — ${MONTH_NAMES[calMonth]} ${calYear} (${rowsToShow.length})`;
 
     const tableBody = document.getElementById("schedule-table-body");
     if (rowsToShow.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-stone-500 font-mono text-xs">No PM schedule entries found</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-stone-500 font-mono text-xs">No PM plan entries found</td></tr>`;
     } else {
         tableBody.innerHTML = rowsToShow
             .map(
@@ -1434,15 +1657,9 @@ function renderAll() {
                     <td class="py-3 px-4 whitespace-nowrap">${getStatusBadge(t.status)}</td>
                     <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
                         <div class="flex items-center gap-2 font-mono text-xs">
-                            <button type="button" onclick="openPhotoModal('${t.id}')" class="underline text-amber-300 hover:text-amber-200">
-                                ${t.beforePhoto || t.afterPhoto ? "Photos" : "Upload"}
-                            </button>
-                            <button type="button" onclick="openEditModal('${t.id}')" class="underline text-sky-300 hover:text-sky-200">
-                                Edit
-                            </button>
-                            <button type="button" onclick="deleteToolRecord('${t.id}')" class="underline text-rose-300 hover:text-rose-200">
-                                Delete
-                            </button>
+                            <button type="button" onclick="openPhotoModal('${t.id}')" class="underline text-amber-300 hover:text-amber-200">${t.beforePhoto || t.afterPhoto ? "Photos" : "Upload"}</button>
+                            <button type="button" onclick="openEditModal('${t.id}')" class="underline text-sky-300 hover:text-sky-200">Edit</button>
+                            <button type="button" onclick="deleteToolRecord('${t.id}')" class="underline text-rose-300 hover:text-rose-200">Delete</button>
                         </div>
                     </td>
                 </tr>
@@ -1454,21 +1671,23 @@ function renderAll() {
 
 async function refreshAll() {
     let idbTools = await getAllFromStore(STORE_TOOLS);
+    let idbBreakdowns = await getAllFromStore(STORE_BREAKDOWNS);
     const mirror = readLocalStorageMirror();
 
     if (idbTools.length === 0 && mirror && mirror.tools.length > 0) {
         idbTools = mirror.tools;
-        for (const t of idbTools) {
-            await putToStore(STORE_TOOLS, t);
-        }
+        for (const t of idbTools) await putToStore(STORE_TOOLS, t);
+    }
+    if (idbBreakdowns.length === 0 && mirror && mirror.breakdowns.length > 0) {
+        idbBreakdowns = mirror.breakdowns;
+        for (const b of idbBreakdowns) await putToStore(STORE_BREAKDOWNS, b);
     }
 
     allTools = idbTools;
-    writeLocalStorageMirror(allTools);
+    allBreakdowns = idbBreakdowns;
+    writeLocalStorageMirror(allTools, allBreakdowns);
     renderAll();
-    if (moldSearchQuery.trim()) {
-        renderHeaderMoldSearchDropdown();
-    }
+    if (moldSearchQuery.trim()) renderHeaderMoldSearchDropdown();
 }
 
 if (dateInput) {
@@ -1495,6 +1714,16 @@ document.getElementById("quick-add-for-selected-date-btn").addEventListener("cli
 const filterMonthBtn = document.getElementById("filter-month-btn");
 const filterAllBtn = document.getElementById("filter-all-btn");
 
+function activateAllMonthPlanView(scrollToSection = false) {
+    tableShowAllDates = true;
+    filterAllBtn.className = "px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300";
+    filterMonthBtn.className = "px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400";
+    renderAll();
+    if (scrollToSection) {
+        document.getElementById("all-month-pm-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+}
+
 filterMonthBtn.addEventListener("click", () => {
     tableShowAllDates = false;
     filterMonthBtn.className = "px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300";
@@ -1502,12 +1731,15 @@ filterMonthBtn.addEventListener("click", () => {
     renderAll();
 });
 
-filterAllBtn.addEventListener("click", () => {
-    tableShowAllDates = true;
-    filterAllBtn.className = "px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300";
-    filterMonthBtn.className = "px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400";
-    renderAll();
-});
+filterAllBtn.addEventListener("click", () => activateAllMonthPlanView(false));
+
+const menuAllMonthSlideBtn = document.getElementById("menu-switch-all-month-btn");
+if (menuAllMonthSlideBtn) {
+    menuAllMonthSlideBtn.addEventListener("click", () => {
+        activateAllMonthPlanView(true);
+        showToast("Showing All Month PM Plan");
+    });
+}
 
 document.getElementById("add-tool-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1529,7 +1761,7 @@ document.getElementById("add-tool-form").addEventListener("submit", async (e) =>
     };
     allTools.push(item);
     await putToStore(STORE_TOOLS, item);
-    writeLocalStorageMirror(allTools);
+    writeLocalStorageMirror(allTools, allBreakdowns);
     e.target.reset();
     addPanel.classList.add("hidden");
     selectCalendarDate(sched);
@@ -1541,7 +1773,8 @@ document.getElementById("export-json-btn").addEventListener("click", () => {
     const payload = {
         system: "ToolSync PM",
         exportedAt: new Date().toISOString(),
-        tools: allTools
+        tools: allTools,
+        breakdowns: allBreakdowns
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1562,7 +1795,13 @@ document.getElementById("import-json-input").addEventListener("change", async (e
         if (!Array.isArray(data.tools)) throw new Error("Invalid backup format");
         await clearStore(STORE_TOOLS);
         for (const t of data.tools) await putToStore(STORE_TOOLS, t);
-        writeLocalStorageMirror(data.tools);
+
+        if (Array.isArray(data.breakdowns)) {
+            await clearStore(STORE_BREAKDOWNS);
+            for (const b of data.breakdowns) await putToStore(STORE_BREAKDOWNS, b);
+        }
+
+        writeLocalStorageMirror(data.tools, Array.isArray(data.breakdowns) ? data.breakdowns : allBreakdowns);
         await refreshAll();
         showToast("Backup restored");
     } catch {
@@ -1608,7 +1847,7 @@ document.getElementById("export-csv-btn").addEventListener("click", () => {
 });
 
 window.addEventListener("beforeunload", () => {
-    writeLocalStorageMirror(allTools);
+    writeLocalStorageMirror(allTools, allBreakdowns);
 });
 
 (async function initApp() {
