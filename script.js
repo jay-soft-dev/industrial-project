@@ -1,133 +1,23 @@
-// =========================================================
-// Dual Persistence Setup (IndexedDB + localStorage Fallback)
-// Stores BOTH PM Plan tools AND Breakdown History across all 12 months
-// =========================================================
-const DB_NAME = "ToolSyncPMDB";
-const DB_VERSION = 4;
-const STORE_TOOLS = "pmTools";
-const STORE_BREAKDOWNS = "breakdownHistory";
-const LS_BACKUP_KEY = "ToolSyncPM_Persistent_State_v2";
-const CLEAN_SLATE_FLAG = "ToolSyncPM_CleanStart_Done_v1";
+const TODAY_ISO = formatDateISO(new Date());
+const PRESENT_MONTH_PREFIX = TODAY_ISO.slice(0, 7);
 
-function writeLocalStorageMirror(tools, breakdowns = []) {
-    try {
-        const slimTools = tools.map((t) => ({
-            ...t,
-            actualMold: t.actualMold || "",
-            beforePhoto: t.beforePhoto || null,
-            afterPhoto: t.afterPhoto || null
-        }));
-        const payload = JSON.stringify({
-            savedAt: Date.now(),
-            tools: slimTools,
-            breakdowns
-        });
-        localStorage.setItem(LS_BACKUP_KEY, payload);
-    } catch {
-        try {
-            const textOnlyTools = tools.map(({ beforePhoto, afterPhoto, ...rest }) => ({
-                ...rest,
-                actualMold: rest.actualMold || "",
-                beforePhoto: beforePhoto ? "__IDB_PHOTO__" : null,
-                afterPhoto: afterPhoto ? "__IDB_PHOTO__" : null
-            }));
-            localStorage.setItem(
-                LS_BACKUP_KEY,
-                JSON.stringify({
-                    savedAt: Date.now(),
-                    tools: textOnlyTools,
-                    breakdowns
-                })
-            );
-        } catch {
-            // Ignore if storage is unavailable
-        }
+let toolsData = [];
+let breakdownsData = [];
+let currentView = "present-pm";
+let selectedDate = TODAY_ISO;
+let allDatesMode = true;
+let pmHistAllDates = true;
+let presentBdAllMonth = true;
+let allBdDateFilter = "";
+let activeModalToolId = null;
+let draftBeforePhoto = "";
+let draftAfterPhoto = "";
+
+async function safeClearStore(storeName) {
+    if (typeof clearStore === "function") {
+        await clearStore(storeName);
+        return;
     }
-}
-
-function readLocalStorageMirror() {
-    try {
-        const raw = localStorage.getItem(LS_BACKUP_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        if (!parsed) return null;
-        return {
-            tools: Array.isArray(parsed.tools) ? parsed.tools : [],
-            breakdowns: Array.isArray(parsed.breakdowns) ? parsed.breakdowns : []
-        };
-    } catch {
-        return null;
-    }
-}
-
-function openDB() {
-    return new Promise((resolve, reject) => {
-        if (!("indexedDB" in window)) {
-            reject(new Error("IndexedDB not supported"));
-            return;
-        }
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains(STORE_TOOLS)) {
-                const toolStore = db.createObjectStore(STORE_TOOLS, { keyPath: "id" });
-                toolStore.createIndex("scheduledDate", "scheduledDate", { unique: false });
-            }
-            if (!db.objectStoreNames.contains(STORE_BREAKDOWNS)) {
-                const bdStore = db.createObjectStore(STORE_BREAKDOWNS, { keyPath: "id" });
-                bdStore.createIndex("date", "date", { unique: false });
-            }
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
-}
-
-async function getAllFromStore(storeName) {
-    try {
-        const db = await openDB();
-        return await new Promise((resolve, reject) => {
-            const tx = db.transaction(storeName, "readonly");
-            const req = tx.objectStore(storeName).getAll();
-            req.onsuccess = () => resolve(req.result || []);
-            req.onerror = () => reject(req.error);
-        });
-    } catch {
-        const mirror = readLocalStorageMirror();
-        if (!mirror) return [];
-        return storeName === STORE_BREAKDOWNS ? mirror.breakdowns : mirror.tools;
-    }
-}
-
-async function putToStore(storeName, item) {
-    try {
-        const db = await openDB();
-        await new Promise((resolve, reject) => {
-            const tx = db.transaction(storeName, "readwrite");
-            tx.objectStore(storeName).put(item);
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => reject(tx.error);
-        });
-    } catch {
-        // Fallback handled via mirror sync
-    }
-}
-
-async function deleteByIdFromStore(storeName, id) {
-    try {
-        const db = await openDB();
-        await new Promise((resolve, reject) => {
-            const tx = db.transaction(storeName, "readwrite");
-            tx.objectStore(storeName).delete(id);
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => reject(tx.error);
-        });
-    } catch {
-        // Fallback handled via mirror sync
-    }
-}
-
-async function clearStore(storeName) {
     try {
         const db = await openDB();
         await new Promise((resolve, reject) => {
@@ -137,1731 +27,779 @@ async function clearStore(storeName) {
             tx.onerror = () => reject(tx.error);
         });
     } catch {
-        // Fallback handled via mirror sync
+        // Ignore storage errors
     }
 }
 
-async function runOneTimeCleanSlate() {
-    try {
-        if (localStorage.getItem(CLEAN_SLATE_FLAG) === "true") return;
+function setActiveView(viewName) {
+    currentView = viewName;
 
-        await clearStore(STORE_TOOLS);
-        await clearStore(STORE_BREAKDOWNS);
+    document.querySelectorAll(".view-section").forEach((sec) => {
+        sec.classList.add("hidden");
+    });
+    const target = document.getElementById(`view-${viewName}`);
+    if (target) target.classList.remove("hidden");
 
-        try {
-            localStorage.removeItem(LS_BACKUP_KEY);
-            localStorage.removeItem("ToolSyncPM_Persistent_State_v1");
-        } catch {
-            // Ignore
-        }
+    const titles = {
+        "present-pm": "present month pm plan",
+        "pm-history": "PM PLAN HISTORY PAGE FORMAT",
+        "present-breakdown": "PRESENT MONTH BRECK DOWN PAGE FORMAT",
+        "breakdown-history": "ALL MONTH BRACK DOWN PAGE FORMAT",
+        "photos-history": "ALL PM MOULD PHOTOS HISTORY",
+        "settings": "SETTINGS"
+    };
+    document.getElementById("top-page-title").textContent = titles[viewName] || "Main Page Format";
 
-        try {
-            if (indexedDB && typeof indexedDB.deleteDatabase === "function") {
-                indexedDB.deleteDatabase("MoldPMControlDB");
+    document.querySelectorAll(".nav-item").forEach((btn) => {
+        const isActive = btn.dataset.view === viewName;
+        btn.className = `nav-item w-full text-left px-3 py-2.5 rounded-xl border font-semibold transition flex items-center justify-between ${
+            isActive
+                ? "border-amber-400 bg-amber-400/15 text-amber-300"
+                : "border-stone-800 bg-[#0b0d11] text-stone-300 hover:border-stone-600"
+        }`;
+    });
+
+    renderCurrentView();
+}
+
+function getAllSavedPhotos() {
+    if (typeof readPhotoBackupStore === "function") {
+        return readPhotoBackupStore();
+    }
+    return toolsData
+        .filter((t) => Boolean(t.beforePhoto || t.afterPhoto))
+        .flatMap((t) => {
+            const out = [];
+            if (t.beforePhoto) {
+                out.push({
+                    id: `${t.id}_before`,
+                    toolCode: t.toolCode,
+                    date: t.scheduledDate,
+                    stage: "BEFORE PM",
+                    photo: t.beforePhoto,
+                    remarks: t.remarks || ""
+                });
             }
-        } catch {
-            // Ignore
-        }
-
-        localStorage.setItem(CLEAN_SLATE_FLAG, "true");
-    } catch {
-        // Ignore
-    }
+            if (t.afterPhoto) {
+                out.push({
+                    id: `${t.id}_after`,
+                    toolCode: t.toolCode,
+                    date: t.scheduledDate,
+                    stage: "AFTER PM",
+                    photo: t.afterPhoto,
+                    remarks: t.remarks || ""
+                });
+            }
+            return out;
+        });
 }
 
-// =========================================================
-// Helpers: Dates, 12-Month Calendar, Toast, Image Compression
-// =========================================================
-const MONTH_NAMES = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-];
-const MONTH_SHORT = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-];
+function updateBadges() {
+    const presentPmCount = toolsData.filter((t) => (t.scheduledDate || "").startsWith(PRESENT_MONTH_PREFIX)).length;
+    const pmHistCount = toolsData.filter((t) => t.status === "PM Completed" || t.beforePhoto || t.afterPhoto).length;
+    const presentBdCount = breakdownsData.filter((b) => (b.date || "").startsWith(PRESENT_MONTH_PREFIX)).length;
+    const allBdCount = breakdownsData.length;
+    const photosCount = getAllSavedPhotos().length;
 
-function formatDateISO(dateObj) {
-    const y = dateObj.getFullYear();
-    const m = String(dateObj.getMonth() + 1).padStart(2, "0");
-    const d = String(dateObj.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
+    document.getElementById("badge-present-pm").textContent = String(presentPmCount);
+    document.getElementById("badge-pm-history").textContent = String(pmHistCount);
+    document.getElementById("badge-present-bd").textContent = String(presentBdCount);
+    document.getElementById("badge-all-bd").textContent = String(allBdCount);
+    document.getElementById("badge-photos").textContent = String(photosCount);
+    document.getElementById("active-date-badge").textContent = allDatesMode ? `ALL DATES (${TODAY_ISO})` : selectedDate;
 }
 
-function addDaysISO(dateStr, days) {
-    const [y, m, d] = dateStr.split("-").map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + days);
-    return formatDateISO(dt);
-}
+function renderPresentPmTable() {
+    const tbody = document.getElementById("present-pm-tbody");
+    const q = document.getElementById("global-mould-search").value.trim().toLowerCase();
+    const dateQ = document.getElementById("global-date-search").value.trim();
 
-function getMonthFirstDayISO(dateStr) {
-    const [y, m] = dateStr.split("-");
-    return `${y}-${m}-01`;
-}
+    let rows = toolsData.filter((t) => (t.scheduledDate || "").startsWith(PRESENT_MONTH_PREFIX));
 
-function getYearMonthPrefix(year, monthIndex) {
-    return `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
-}
-
-function escapeHtmlAttr(str) {
-    return String(str || "")
-        .replace(/&/g, "&amp;")
-        .replace(/"/g, "&quot;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-}
-
-const toastEl = document.getElementById("toast");
-let toastTimer = null;
-function showToast(msg) {
-    if (!toastEl) return;
-    toastEl.textContent = msg;
-    toastEl.classList.remove("translate-y-20", "opacity-0");
-    toastEl.classList.add("translate-y-0", "opacity-100");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-        toastEl.classList.remove("translate-y-0", "opacity-100");
-        toastEl.classList.add("translate-y-20", "opacity-0");
-    }, 2500);
-}
-
-function compressImageFile(file, maxWidth = 900, quality = 0.72) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const img = new Image();
-            img.onload = () => {
-                const scale = Math.min(1, maxWidth / img.width);
-                const canvas = document.createElement("canvas");
-                canvas.width = Math.round(img.width * scale);
-                canvas.height = Math.round(img.height * scale);
-                const ctx = canvas.getContext("2d");
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL("image/jpeg", quality));
-            };
-            img.onerror = reject;
-            img.src = ev.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-}
-
-// =========================================================
-// Slide Menu Header Navigation (Goes Inside Selected Page View)
-// =========================================================
-let currentPageView = "pm-plan";
-
-function switchPageView(pageKey) {
-    currentPageView = pageKey;
-    document.querySelectorAll(".workspace-view").forEach((el) => {
-        el.classList.add("hidden");
-    });
-    const activeView = document.getElementById(`view-${pageKey}`);
-    if (activeView) activeView.classList.remove("hidden");
-
-    document.querySelectorAll(".slide-page-btn").forEach((btn) => {
-        const isCurrent = btn.getAttribute("data-page-tab") === pageKey;
-        btn.className = isCurrent
-            ? "slide-page-btn w-full px-3.5 py-2.5 rounded-xl text-left font-mono text-xs font-bold flex items-center justify-between border border-amber-400/60 bg-amber-400/15 text-amber-300 transition"
-            : "slide-page-btn w-full px-3.5 py-2.5 rounded-xl text-left font-mono text-xs font-bold flex items-center justify-between border border-transparent hover:border-stone-700 bg-[#0b0d11] text-stone-200 transition";
-    });
-
-    renderAll();
-}
-
-document.querySelectorAll("[data-page-tab]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-        const tab = btn.getAttribute("data-page-tab");
-        if (tab) switchPageView(tab);
-    });
-});
-
-// =========================================================
-// App State & Core PM + Breakdown Logic
-// =========================================================
-const todayISO = formatDateISO(new Date());
-let allTools = [];
-let allBreakdowns = [];
-let activeDate = todayISO;
-let selectedBreakdownDate = todayISO;
-let editingBreakdownId = null;
-let tableShowAllDates = false;
-let moldSearchQuery = "";
-
-const [initY, initM] = todayISO.split("-").map(Number);
-let calYear = initY;
-let calMonth = initM - 1;
-
-let bdCalYear = initY;
-let bdCalMonth = initM - 1;
-
-let activeModalToolId = null;
-let activeEditToolId = null;
-let draftBeforePhoto = null;
-let draftAfterPhoto = null;
-let lastRawOcrText = "";
-
-const toggleSlideMenuBtn = document.getElementById("toggle-slide-menu-btn");
-const slideMenuPanel = document.getElementById("slide-menu-panel");
-const workspaceShell = document.getElementById("workspace-shell");
-const headerActiveDatePill = document.getElementById("header-active-date-pill");
-
-const dateInput = document.getElementById("selected-date");
-const monthSelect = document.getElementById("calendar-month-select");
-const yearSelect = document.getElementById("calendar-year-select");
-const addPanel = document.getElementById("add-tool-panel");
-
-const headerMonthSearchInput = document.getElementById("header-month-search");
-const clearMonthSearchBtn = document.getElementById("clear-month-search-btn");
-
-const headerDateSearchInput = document.getElementById("header-date-search");
-const clearDateSearchBtn = document.getElementById("clear-date-search-btn");
-
-const headerMoldSearchInput = document.getElementById("header-mold-search");
-const clearMoldSearchBtn = document.getElementById("clear-mold-search-btn");
-const moldSearchResultsEl = document.getElementById("mold-search-results");
-const activeSearchBanner = document.getElementById("active-search-banner");
-const activeSearchText = document.getElementById("active-search-text");
-const searchMatchesInlineList = document.getElementById("search-matches-inline-list");
-
-if (toggleSlideMenuBtn && slideMenuPanel && workspaceShell) {
-    toggleSlideMenuBtn.addEventListener("click", () => {
-        const isHidden = slideMenuPanel.classList.toggle("hidden");
-        toggleSlideMenuBtn.setAttribute("aria-expanded", String(!isHidden));
-        if (isHidden) {
-            workspaceShell.className = "max-w-[1440px] mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 gap-5 items-start";
-        } else {
-            workspaceShell.className = "max-w-[1440px] mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start";
-        }
-    });
-}
-
-function populateYearOptions(centerYear) {
-    if (!yearSelect) return;
-    const startYear = centerYear - 5;
-    const endYear = centerYear + 2;
-    yearSelect.innerHTML = "";
-    for (let y = startYear; y <= endYear; y++) {
-        const opt = document.createElement("option");
-        opt.value = String(y);
-        opt.textContent = String(y);
-        if (y === calYear) opt.selected = true;
-        yearSelect.appendChild(opt);
-    }
-}
-
-populateYearOptions(initY);
-if (dateInput) dateInput.value = activeDate;
-if (headerDateSearchInput) headerDateSearchInput.value = activeDate;
-if (monthSelect) monthSelect.value = String(calMonth);
-
-function parseMonthSearchQuery(raw, currentYear) {
-    const q = raw.trim().toLowerCase();
-    if (!q) return null;
-
-    const ymMatch = q.match(/^(\d{4})[-\/](\d{1,2})$/);
-    if (ymMatch) {
-        const yr = Number(ymMatch[1]);
-        const mo = Number(ymMatch[2]) - 1;
-        if (mo >= 0 && mo <= 11) return { year: yr, monthIndex: mo };
+    if (dateQ) {
+        rows = rows.filter((t) => t.scheduledDate === dateQ);
+    } else if (!allDatesMode && selectedDate) {
+        rows = rows.filter((t) => t.scheduledDate === selectedDate);
     }
 
-    for (let i = 0; i < 12; i++) {
-        const full = MONTH_NAMES[i].toLowerCase();
-        const shortName = MONTH_SHORT[i].toLowerCase();
-        if (full.startsWith(q) || shortName.startsWith(q)) {
-            return { year: currentYear, monthIndex: i };
-        }
-    }
-
-    if (/^(1[0-2]|0?[1-9])$/.test(q)) {
-        const mo = Number(q) - 1;
-        return { year: currentYear, monthIndex: mo };
-    }
-
-    return null;
-}
-
-if (headerMonthSearchInput) {
-    headerMonthSearchInput.addEventListener("input", (e) => {
-        const val = e.target.value;
-        if (clearMonthSearchBtn) {
-            clearMonthSearchBtn.classList.toggle("hidden", val.trim().length === 0);
-        }
-        const parsed = parseMonthSearchQuery(val, calYear);
-        if (parsed) {
-            setCalendarMonth(parsed.year, parsed.monthIndex, true);
-        }
-    });
-}
-
-if (clearMonthSearchBtn) {
-    clearMonthSearchBtn.addEventListener("click", () => {
-        if (headerMonthSearchInput) headerMonthSearchInput.value = "";
-        clearMonthSearchBtn.classList.add("hidden");
-        const [y, m] = todayISO.split("-").map(Number);
-        setCalendarMonth(y, m - 1, false);
-    });
-}
-
-function parseDateSearchText(raw) {
-    const s = raw.trim();
-    if (!s) return null;
-
-    const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-    if (isoMatch) {
-        const y = Number(isoMatch[1]);
-        const m = String(Number(isoMatch[2])).padStart(2, "0");
-        const d = String(Number(isoMatch[3])).padStart(2, "0");
-        if (Number(m) >= 1 && Number(m) <= 12 && Number(d) >= 1 && Number(d) <= 31) {
-            return `${y}-${m}-${d}`;
-        }
-    }
-
-    const dmyMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-    if (dmyMatch) {
-        const d = String(Number(dmyMatch[1])).padStart(2, "0");
-        const m = String(Number(dmyMatch[2])).padStart(2, "0");
-        const y = Number(dmyMatch[3]);
-        if (Number(m) >= 1 && Number(m) <= 12 && Number(d) >= 1 && Number(d) <= 31) {
-            return `${y}-${m}-${d}`;
-        }
-    }
-
-    return null;
-}
-
-if (headerDateSearchInput) {
-    headerDateSearchInput.addEventListener("input", (e) => {
-        const val = e.target.value;
-        if (clearDateSearchBtn) {
-            clearDateSearchBtn.classList.toggle("hidden", val.trim().length === 0);
-        }
-        const parsedISO = parseDateSearchText(val);
-        if (parsedISO) {
-            selectCalendarDate(parsedISO, false);
-        }
-    });
-}
-
-if (clearDateSearchBtn) {
-    clearDateSearchBtn.addEventListener("click", () => {
-        if (headerDateSearchInput) headerDateSearchInput.value = "";
-        clearDateSearchBtn.classList.add("hidden");
-        selectCalendarDate(todayISO);
-    });
-}
-
-function getMatchingMoldsAcrossAllMonths(query) {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return allTools
-        .filter((t) => {
-            const hay = `${t.toolCode || ""} ${t.moldName || ""} ${t.actualMold || ""} ${t.machineNo || ""} ${t.scheduledDate || ""} ${t.status || ""} ${t.remarks || ""}`.toLowerCase();
-            return hay.includes(q);
-        })
-        .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
-}
-
-function jumpToToolAcrossMonths(toolId) {
-    const found = allTools.find((t) => t.id === toolId);
-    if (!found) return;
-    if (moldSearchResultsEl) moldSearchResultsEl.classList.add("hidden");
-    switchPageView("pm-plan");
-    selectCalendarDate(found.scheduledDate);
-    showToast(`Jumped to ${found.toolCode} (${found.scheduledDate})`);
-}
-
-function renderHeaderMoldSearchDropdown() {
-    if (!clearMoldSearchBtn || !moldSearchResultsEl) return;
-    const q = moldSearchQuery.trim();
-    clearMoldSearchBtn.classList.toggle("hidden", q.length === 0);
-
-    if (!q) {
-        moldSearchResultsEl.classList.add("hidden");
-        moldSearchResultsEl.innerHTML = "";
-        return;
-    }
-
-    const matches = getMatchingMoldsAcrossAllMonths(q);
-    moldSearchResultsEl.classList.remove("hidden");
-
-    if (matches.length === 0) {
-        moldSearchResultsEl.innerHTML = `
-            <div class="p-4 text-xs font-mono text-stone-400">
-                No mold matching "<span class="text-amber-300">${q}</span>" across any month.
-            </div>
-        `;
-        return;
-    }
-
-    moldSearchResultsEl.innerHTML = `
-        <div class="px-3 py-2 bg-[#0d1017] text-[10px] font-mono uppercase text-amber-300 flex items-center justify-between">
-            <span>All Months Match (${matches.length})</span>
-            <span class="text-stone-400">Click to jump</span>
-        </div>
-        ${matches
-            .map((t) => {
-                const [y, m] = (t.scheduledDate || "").split("-").map(Number);
-                const mLabel = m ? `${MONTH_SHORT[m - 1]} ${y}` : t.scheduledDate;
-                return `
-                    <button
-                        type="button"
-                        onclick="jumpToToolAcrossMonths('${t.id}')"
-                        class="w-full px-3.5 py-2.5 text-left hover:bg-stone-800/70 transition flex items-center justify-between gap-3"
-                    >
-                        <div class="min-w-0">
-                            <div class="flex items-center gap-2 font-mono text-xs">
-                                <span class="font-bold text-amber-400">${t.toolCode}</span>
-                                <span class="px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-300 text-[10px]">${mLabel}</span>
-                                <span class="text-stone-400 text-[11px]">${t.scheduledDate}</span>
-                            </div>
-                            <div class="text-xs text-stone-100 truncate mt-0.5">${t.moldName} • <span class="font-mono text-stone-400">${t.machineNo}</span></div>
-                        </div>
-                        <span class="text-[11px] font-mono text-amber-300 shrink-0">Go &rarr;</span>
-                    </button>
-                `;
-            })
-            .join("")}
-    `;
-}
-
-function clearAllMoldSearch() {
-    moldSearchQuery = "";
-    if (headerMoldSearchInput) headerMoldSearchInput.value = "";
-    if (clearMoldSearchBtn) clearMoldSearchBtn.classList.add("hidden");
-    if (moldSearchResultsEl) {
-        moldSearchResultsEl.classList.add("hidden");
-        moldSearchResultsEl.innerHTML = "";
-    }
-    renderAll();
-}
-
-if (headerMoldSearchInput) {
-    headerMoldSearchInput.addEventListener("input", (e) => {
-        moldSearchQuery = e.target.value;
-        renderHeaderMoldSearchDropdown();
-        renderAll();
-    });
-    headerMoldSearchInput.addEventListener("focus", () => {
-        if (moldSearchQuery.trim()) renderHeaderMoldSearchDropdown();
-    });
-}
-if (clearMoldSearchBtn) clearMoldSearchBtn.addEventListener("click", clearAllMoldSearch);
-const resetAllSearchBtn = document.getElementById("reset-all-search-btn");
-if (resetAllSearchBtn) resetAllSearchBtn.addEventListener("click", clearAllMoldSearch);
-
-document.addEventListener("click", (e) => {
-    if (
-        moldSearchResultsEl &&
-        !e.target.closest("#header-mold-search") &&
-        !e.target.closest("#mold-search-results")
-    ) {
-        moldSearchResultsEl.classList.add("hidden");
-    }
-});
-
-async function saveActualMoldSelf(toolId, value) {
-    const tool = allTools.find((t) => t.id === toolId);
-    if (!tool) return;
-    const cleaned = String(value || "").trim();
-    const prev = String(tool.actualMold || "").trim();
-    if (cleaned === prev) return;
-
-    tool.actualMold = cleaned;
-    await putToStore(STORE_TOOLS, tool);
-    writeLocalStorageMirror(allTools, allBreakdowns);
-    showToast(cleaned ? `Saved exchange mold: ${cleaned}` : "Exchange mold cleared");
-    renderCalendarGrid();
-    renderClickedDateStatusBanner(allTools.filter((t) => t.scheduledDate === activeDate));
-}
-
-async function deleteToolRecord(toolId, skipConfirm = false) {
-    const target = allTools.find((t) => t.id === toolId);
-    if (!target) return false;
-
-    if (!skipConfirm) {
-        const ok = window.confirm(
-            `Delete "${target.toolCode} — ${target.moldName}" scheduled on ${target.scheduledDate}?`
+    if (q) {
+        rows = rows.filter((t) =>
+            [t.toolCode, t.exchangeMould, t.status, t.remarks, t.postpondMould, t.scheduledDate]
+                .join(" ")
+                .toLowerCase()
+                .includes(q)
         );
-        if (!ok) return false;
     }
 
-    allTools = allTools.filter((t) => t.id !== toolId);
-    await deleteByIdFromStore(STORE_TOOLS, toolId);
-    writeLocalStorageMirror(allTools, allBreakdowns);
+    rows.sort((a, b) => (a.scheduledDate || "").localeCompare(b.scheduledDate || ""));
 
-    if (activeModalToolId === toolId) closePhotoModal();
-    if (activeEditToolId === toolId) closeEditModal();
-
-    await refreshAll();
-    showToast(`Deleted ${target.toolCode}`);
-    return true;
-}
-
-// =========================================================
-// Breakdown Data CRUD + 12-Month Calendar
-// =========================================================
-const breakdownForm = document.getElementById("breakdown-data-form");
-const bdDateInput = document.getElementById("bd-date-input");
-const bdToolCodeInput = document.getElementById("bd-tool-code-input");
-const bdIssueInput = document.getElementById("bd-issue-input");
-const bdStatusInput = document.getElementById("bd-status-input");
-const bdMachineNoInput = document.getElementById("bd-machine-no-input");
-const bdTimeInput = document.getElementById("bd-time-input");
-const bdSubmitBtn = document.getElementById("bd-submit-btn");
-const breakdownFormHeading = document.getElementById("breakdown-form-heading");
-
-function openBreakdownForm(dateOverride = null, editItem = null) {
-    if (editItem) {
-        editingBreakdownId = editItem.id;
-        bdDateInput.value = editItem.date || selectedBreakdownDate || todayISO;
-        bdToolCodeInput.value = editItem.toolCode || "";
-        bdIssueInput.value = editItem.issue || "";
-        bdStatusInput.value = editItem.bdStatus || "Open";
-        bdMachineNoInput.value = editItem.machineNo || "";
-        bdTimeInput.value = editItem.duration || "";
-        bdSubmitBtn.textContent = "Update";
-        breakdownFormHeading.textContent = `Edit Breakdown (${editItem.toolCode})`;
-    } else {
-        editingBreakdownId = null;
-        bdDateInput.value = dateOverride || selectedBreakdownDate || activeDate || todayISO;
-        bdToolCodeInput.value = "";
-        bdIssueInput.value = "";
-        bdStatusInput.value = "Repaired";
-        bdMachineNoInput.value = "";
-        bdTimeInput.value = "";
-        bdSubmitBtn.textContent = "Save";
-        breakdownFormHeading.textContent = "Enter Data";
-    }
-    switchPageView("breakdown");
-    bdToolCodeInput.focus();
-}
-
-document.getElementById("open-breakdown-entry-btn").addEventListener("click", () => {
-    openBreakdownForm(selectedBreakdownDate);
-});
-
-breakdownForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const dateVal = bdDateInput.value || selectedBreakdownDate || todayISO;
-    const toolVal = bdToolCodeInput.value.trim().toUpperCase();
-    const issueVal = bdIssueInput.value.trim();
-    const statusVal = bdStatusInput.value.trim();
-    const machVal = bdMachineNoInput.value.trim().toUpperCase();
-    const timeVal = bdTimeInput.value.trim();
-
-    if (!toolVal || !issueVal || !statusVal || !machVal || !timeVal) return;
-
-    if (editingBreakdownId) {
-        const existing = allBreakdowns.find((b) => b.id === editingBreakdownId);
-        if (existing) {
-            existing.date = dateVal;
-            existing.toolCode = toolVal;
-            existing.issue = issueVal;
-            existing.bdStatus = statusVal;
-            existing.machineNo = machVal;
-            existing.duration = timeVal;
-            await putToStore(STORE_BREAKDOWNS, existing);
-            showToast(`Updated breakdown ${toolVal}`);
-        }
-        editingBreakdownId = null;
-    } else {
-        const newBd = {
-            id: `bd_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-            date: dateVal,
-            toolCode: toolVal,
-            issue: issueVal,
-            bdStatus: statusVal,
-            machineNo: machVal,
-            duration: timeVal,
-            createdAt: new Date().toISOString()
-        };
-        allBreakdowns.push(newBd);
-        await putToStore(STORE_BREAKDOWNS, newBd);
-        showToast(`Saved breakdown to ${dateVal}`);
-    }
-
-    selectedBreakdownDate = dateVal;
-    const [y, m] = dateVal.split("-").map(Number);
-    bdCalYear = y;
-    bdCalMonth = m - 1;
-
-    writeLocalStorageMirror(allTools, allBreakdowns);
-    breakdownForm.reset();
-    bdDateInput.value = dateVal;
-    bdSubmitBtn.textContent = "Save";
-    breakdownFormHeading.textContent = "Enter Data";
-    await refreshAll();
-});
-
-async function deleteBreakdownRecord(bdId) {
-    const target = allBreakdowns.find((b) => b.id === bdId);
-    if (!target) return;
-    if (!window.confirm(`Delete breakdown "${target.toolCode} — ${target.issue}" on ${target.date}?`)) {
-        return;
-    }
-    allBreakdowns = allBreakdowns.filter((b) => b.id !== bdId);
-    await deleteByIdFromStore(STORE_BREAKDOWNS, bdId);
-    writeLocalStorageMirror(allTools, allBreakdowns);
-    await refreshAll();
-    showToast(`Deleted breakdown ${target.toolCode}`);
-}
-
-function editBreakdownRecord(bdId) {
-    const target = allBreakdowns.find((b) => b.id === bdId);
-    if (!target) return;
-    openBreakdownForm(target.date, target);
-}
-
-function selectBreakdownCalendarDate(dateStr) {
-    selectedBreakdownDate = dateStr;
-    if (bdDateInput) bdDateInput.value = dateStr;
-    const [y, m] = dateStr.split("-").map(Number);
-    bdCalYear = y;
-    bdCalMonth = m - 1;
-    renderBreakdownSection();
-}
-
-function setBreakdownCalendarMonth(year, monthIndex) {
-    const dt = new Date(year, monthIndex, 1);
-    bdCalYear = dt.getFullYear();
-    bdCalMonth = dt.getMonth();
-    const prefix = getYearMonthPrefix(bdCalYear, bdCalMonth);
-    if (!selectedBreakdownDate.startsWith(prefix)) {
-        selectedBreakdownDate = `${prefix}-01`;
-        if (bdDateInput) bdDateInput.value = selectedBreakdownDate;
-    }
-    renderBreakdownSection();
-}
-
-document.getElementById("bd-cal-prev-btn").addEventListener("click", () => {
-    setBreakdownCalendarMonth(bdCalYear, bdCalMonth - 1);
-});
-document.getElementById("bd-cal-next-btn").addEventListener("click", () => {
-    setBreakdownCalendarMonth(bdCalYear, bdCalMonth + 1);
-});
-
-function renderBreakdownSection() {
-    const presentPrefix = getYearMonthPrefix(calYear, calMonth);
-    const presentBreakdowns = allBreakdowns
-        .filter((b) => (b.date || "").startsWith(presentPrefix))
-        .sort((a, b) => b.date.localeCompare(a.date));
-
-    const pmLabel = document.getElementById("present-month-bd-label");
-    const pmCount = document.getElementById("present-month-bd-count");
-    const statMonthBd = document.getElementById("stat-month-breakdowns");
-
-    if (pmLabel) pmLabel.textContent = `Present Month Breakdown (${MONTH_NAMES[calMonth]} ${calYear})`;
-    if (pmCount) pmCount.textContent = String(presentBreakdowns.length);
-    if (statMonthBd) statMonthBd.textContent = String(presentBreakdowns.length);
-
-    const presentBdBody = document.getElementById("present-bd-tbody");
-    if (presentBdBody) {
-        presentBdBody.innerHTML = presentBreakdowns.length
-            ? presentBreakdowns
-                  .map(
-                      (b) => `
-                  <tr class="hover:bg-stone-900/50 font-mono text-xs">
-                      <td class="py-2.5 px-3 whitespace-nowrap">${b.date}</td>
-                      <td class="py-2.5 px-3 font-bold text-rose-300 whitespace-nowrap">${b.toolCode}</td>
-                      <td class="py-2.5 px-3 font-sans text-stone-200">${b.issue}</td>
-                      <td class="py-2.5 px-3 whitespace-nowrap">${b.bdStatus || "—"}</td>
-                      <td class="py-2.5 px-3 whitespace-nowrap">${b.machineNo}</td>
-                      <td class="py-2.5 px-3 whitespace-nowrap">${b.duration || "—"}</td>
-                  </tr>
-              `
-                  )
-                  .join("")
-            : `<tr><td colspan="6" class="py-6 text-center text-stone-500">No breakdown data for ${MONTH_NAMES[calMonth]} ${calYear}</td></tr>`;
-    }
-
-    const bdPillsEl = document.getElementById("bd-twelve-month-pills");
-    if (bdPillsEl) {
-        bdPillsEl.innerHTML = MONTH_SHORT.map((shortM, idx) => {
-            const pfx = getYearMonthPrefix(bdCalYear, idx);
-            const cnt = allBreakdowns.filter((b) => (b.date || "").startsWith(pfx)).length;
-            const active = idx === bdCalMonth;
-            return `
-                <button
-                    type="button"
-                    onclick="setBreakdownCalendarMonth(${bdCalYear}, ${idx})"
-                    class="shrink-0 px-2.5 py-1 rounded border transition flex items-center gap-1 ${
-                        active
-                            ? "border-rose-400 bg-rose-500/20 text-rose-200 font-bold"
-                            : "border-stone-800 bg-[#11151d] text-stone-400 hover:text-stone-200"
-                    }"
-                >
-                    <span>${shortM}</span>
-                    <span class="px-1 rounded bg-stone-800 text-[10px]">${cnt}</span>
-                </button>
-            `;
-        }).join("");
-    }
-
-    const bdMonthLabel = document.getElementById("bd-cal-month-label");
-    if (bdMonthLabel) bdMonthLabel.textContent = `${MONTH_NAMES[bdCalMonth]} ${bdCalYear}`;
-
-    const bdGridEl = document.getElementById("bd-calendar-grid");
-    if (bdGridEl) {
-        const firstDay = new Date(bdCalYear, bdCalMonth, 1).getDay();
-        const totalDays = new Date(bdCalYear, bdCalMonth + 1, 0).getDate();
-        const bdByDate = new Map();
-        for (const b of allBreakdowns) {
-            const arr = bdByDate.get(b.date) || [];
-            arr.push(b);
-            bdByDate.set(b.date, arr);
-        }
-
-        const cells = [];
-        for (let i = 0; i < firstDay; i++) {
-            cells.push(`<div class="h-12 rounded-lg bg-[#11151d]/40"></div>`);
-        }
-        for (let d = 1; d <= totalDays; d++) {
-            const iso = `${bdCalYear}-${String(bdCalMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-            const dayItems = bdByDate.get(iso) || [];
-            const isSel = iso === selectedBreakdownDate;
-            cells.push(`
-                <button
-                    type="button"
-                    onclick="selectBreakdownCalendarDate('${iso}')"
-                    class="h-12 rounded-lg text-xs font-mono p-1.5 flex flex-col justify-between border transition ${
-                        isSel
-                            ? "border-rose-400 bg-rose-500/25 text-white font-bold"
-                            : dayItems.length > 0
-                            ? "border-rose-500/40 bg-rose-950/40 text-rose-200"
-                            : "border-stone-800/70 bg-[#11151d] text-stone-400 hover:border-stone-600"
-                    }"
-                >
-                    <span>${d}</span>
-                    <span class="text-[9px] truncate ${dayItems.length > 0 ? "text-rose-300" : "text-stone-600"}">
-                        ${dayItems.length > 0 ? dayItems.map((x) => x.toolCode).join(",") : "—"}
-                    </span>
-                </button>
-            `);
-        }
-        bdGridEl.innerHTML = cells.join("");
-    }
-
-    const bdHistoryBody = document.getElementById("bd-history-tbody");
-    if (bdHistoryBody) {
-        const sortedAll = [...allBreakdowns].sort((a, b) => b.date.localeCompare(a.date));
-        bdHistoryBody.innerHTML = sortedAll.length
-            ? sortedAll
-                  .map(
-                      (b) => `
-                  <tr class="hover:bg-stone-900/50 font-mono text-xs">
-                      <td class="py-2.5 px-3 whitespace-nowrap">${b.date}</td>
-                      <td class="py-2.5 px-3 font-bold text-rose-300 whitespace-nowrap">${b.toolCode}</td>
-                      <td class="py-2.5 px-3 font-sans text-stone-200">${b.issue}</td>
-                      <td class="py-2.5 px-3 whitespace-nowrap">${b.bdStatus || "—"}</td>
-                      <td class="py-2.5 px-3 whitespace-nowrap">${b.machineNo}</td>
-                      <td class="py-2.5 px-3 whitespace-nowrap">${b.duration || "—"}</td>
-                  </tr>
-              `
-                  )
-                  .join("")
-            : `<tr><td colspan="6" class="py-6 text-center text-stone-500">No breakdown history saved yet</td></tr>`;
-    }
-}
-
-// =========================================================
-// Edit PM Plan Modal
-// =========================================================
-const editModal = document.getElementById("edit-tool-modal");
-const editModalHeading = document.getElementById("edit-modal-heading");
-const editToolForm = document.getElementById("edit-tool-form");
-const editToolCodeInput = document.getElementById("edit-tool-code");
-const editMoldNameInput = document.getElementById("edit-mold-name");
-const editActualMoldInput = document.getElementById("edit-actual-mold");
-const editMachineNoInput = document.getElementById("edit-machine-no");
-const editScheduledDateInput = document.getElementById("edit-scheduled-date");
-const editStatusSelect = document.getElementById("edit-status");
-const editRemarksInput = document.getElementById("edit-remarks");
-
-function openEditModal(toolId) {
-    const tool = allTools.find((t) => t.id === toolId);
-    if (!tool) return;
-    activeEditToolId = tool.id;
-    editModalHeading.textContent = `Edit ${tool.toolCode} — ${tool.moldName}`;
-    editToolCodeInput.value = tool.toolCode || "";
-    editMoldNameInput.value = tool.moldName || "";
-    editActualMoldInput.value = tool.actualMold || "";
-    editMachineNoInput.value = tool.machineNo || "";
-    editScheduledDateInput.value = tool.scheduledDate || activeDate;
-    editStatusSelect.value = tool.status || "Scheduled";
-    editRemarksInput.value = tool.remarks || "";
-
-    editModal.classList.remove("hidden");
-    editModal.classList.add("flex");
-}
-
-function closeEditModal() {
-    activeEditToolId = null;
-    editModal.classList.add("hidden");
-    editModal.classList.remove("flex");
-}
-
-document.getElementById("close-edit-modal-btn").addEventListener("click", closeEditModal);
-document.getElementById("cancel-edit-btn").addEventListener("click", closeEditModal);
-document.getElementById("delete-from-edit-btn").addEventListener("click", async () => {
-    if (!activeEditToolId) return;
-    await deleteToolRecord(activeEditToolId);
-});
-
-editToolForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!activeEditToolId) return;
-    const tool = allTools.find((t) => t.id === activeEditToolId);
-    if (!tool) return;
-
-    const prevDate = tool.scheduledDate;
-    tool.toolCode = editToolCodeInput.value.trim().toUpperCase();
-    tool.moldName = editMoldNameInput.value.trim();
-    tool.actualMold = editActualMoldInput.value.trim();
-    tool.machineNo = editMachineNoInput.value.trim().toUpperCase();
-    tool.scheduledDate = editScheduledDateInput.value || prevDate;
-    tool.status = editStatusSelect.value;
-    tool.remarks = editRemarksInput.value.trim();
-    if (tool.status === "PM Completed" && !tool.completedAt) {
-        tool.completedAt = new Date().toISOString();
-    }
-
-    await putToStore(STORE_TOOLS, tool);
-    writeLocalStorageMirror(allTools, allBreakdowns);
-
-    const targetDate = tool.scheduledDate;
-    closeEditModal();
-    selectCalendarDate(targetDate);
-    await refreshAll();
-    showToast(`Updated ${tool.toolCode}`);
-});
-
-async function handleMachineRunning(toolId) {
-    const targetTool = allTools.find((t) => t.id === toolId);
-    if (!targetTool) return;
-
-    const currentSlotDate = targetTool.scheduledDate;
-    const futureCandidates = allTools
-        .filter((t) => t.id !== targetTool.id && t.scheduledDate > currentSlotDate && t.status === "Scheduled")
-        .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
-
-    const pushedDate = addDaysISO(currentSlotDate, 1);
-
-    if (futureCandidates.length > 0) {
-        const replacement = futureCandidates[0];
-        const oldReplacementDate = replacement.scheduledDate;
-
-        replacement.scheduledDate = currentSlotDate;
-        replacement.note = `Pulled from ${oldReplacementDate} (Swap for running ${targetTool.toolCode})`;
-
-        targetTool.scheduledDate = addDaysISO(oldReplacementDate, 1);
-        targetTool.status = "Swapped / Rescheduled";
-        targetTool.note = `Running on ${targetTool.machineNo} on ${currentSlotDate}; moved to ${targetTool.scheduledDate}`;
-
-        await putToStore(STORE_TOOLS, replacement);
-        await putToStore(STORE_TOOLS, targetTool);
-        showToast(`Swapped with ${replacement.toolCode}`);
-    } else {
-        targetTool.scheduledDate = pushedDate;
-        targetTool.status = "Swapped / Rescheduled";
-        targetTool.note = `Running on ${currentSlotDate}; pushed to ${pushedDate}`;
-        await putToStore(STORE_TOOLS, targetTool);
-        showToast(`${targetTool.toolCode} pushed to ${pushedDate}`);
-    }
-
-    await refreshAll();
-}
-
-function setCalendarMonth(year, monthIndex, selectFirstDayIfOutside = false) {
-    const normalized = new Date(year, monthIndex, 1);
-    calYear = normalized.getFullYear();
-    calMonth = normalized.getMonth();
-
-    if (yearSelect) {
-        const existingYears = Array.from(yearSelect.options).map((o) => Number(o.value));
-        if (!existingYears.includes(calYear)) populateYearOptions(calYear);
-        yearSelect.value = String(calYear);
-    }
-    if (monthSelect) monthSelect.value = String(calMonth);
-
-    const ymPrefix = getYearMonthPrefix(calYear, calMonth);
-    if (selectFirstDayIfOutside && !activeDate.startsWith(ymPrefix)) {
-        activeDate = `${ymPrefix}-01`;
-        if (dateInput) dateInput.value = activeDate;
-        if (headerDateSearchInput) headerDateSearchInput.value = activeDate;
-    }
-
-    renderAll();
-}
-
-document.getElementById("prev-month-btn").addEventListener("click", () => setCalendarMonth(calYear, calMonth - 1, true));
-document.getElementById("next-month-btn").addEventListener("click", () => setCalendarMonth(calYear, calMonth + 1, true));
-if (monthSelect) monthSelect.addEventListener("change", (e) => setCalendarMonth(calYear, Number(e.target.value), true));
-if (yearSelect) yearSelect.addEventListener("change", (e) => setCalendarMonth(Number(e.target.value), calMonth, true));
-
-document.getElementById("jump-today-btn").addEventListener("click", () => {
-    activeDate = todayISO;
-    if (dateInput) dateInput.value = activeDate;
-    if (headerDateSearchInput) headerDateSearchInput.value = activeDate;
-    const [y, m] = todayISO.split("-").map(Number);
-    setCalendarMonth(y, m - 1, false);
-});
-
-// =========================================================
-// Photo to Text Converter Modal
-// =========================================================
-const ocrModal = document.getElementById("ocr-modal");
-const planPhotoInput = document.getElementById("plan-photo-input");
-const planPhotoPreview = document.getElementById("plan-photo-preview");
-const planPhotoPlaceholder = document.getElementById("plan-photo-placeholder");
-const ocrProgressBox = document.getElementById("ocr-progress-box");
-const ocrStatusText = document.getElementById("ocr-status-text");
-const ocrPercent = document.getElementById("ocr-percent");
-const ocrProgressBar = document.getElementById("ocr-progress-bar");
-const planStartDateInput = document.getElementById("plan-start-date");
-const datewiseTextarea = document.getElementById("datewise-text-output");
-const parsedSummaryLabel = document.getElementById("parsed-summary-label");
-
-document.getElementById("open-ocr-modal-btn").addEventListener("click", () => {
-    planStartDateInput.value = getMonthFirstDayISO(activeDate);
-    ocrModal.classList.remove("hidden");
-    ocrModal.classList.add("flex");
-    updateParsedCounter();
-});
-
-document.getElementById("close-ocr-modal-btn").addEventListener("click", () => {
-    ocrModal.classList.add("hidden");
-    ocrModal.classList.remove("flex");
-});
-
-function convertOcrTextToDateWiseFormat(rawText, monthStartISO) {
-    const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const [baseYear, baseMonth] = monthStartISO.split("-");
-    const dateMap = new Map();
-    const ungroupedMolds = [];
-
-    const moldTokenRegex = /\b(?:IM|T|TL|MLD|MOLD|M)[-\s]?\d{1,4}[A-Z]?\b/gi;
-    const dateRegex = /\b(\d{1,2})[\/\-\.](\d{1,2})(?:[\/\-\.](\d{2,4}))?\b/;
-
-    for (const line of lines) {
-        const foundMolds = (line.match(moldTokenRegex) || []).map((m) => m.toUpperCase().replace(/\s+/g, "-"));
-        const dateMatch = line.match(dateRegex);
-
-        if (dateMatch && foundMolds.length > 0) {
-            const dayNum = String(Math.min(31, Math.max(1, parseInt(dateMatch[1], 10)))).padStart(2, "0");
-            const monthNum = dateMatch[2] ? String(Math.min(12, Math.max(1, parseInt(dateMatch[2], 10)))).padStart(2, "0") : baseMonth;
-            const yearNum = dateMatch[3] ? (dateMatch[3].length === 2 ? `20${dateMatch[3]}` : dateMatch[3]) : baseYear;
-            const iso = `${yearNum}-${monthNum}-${dayNum}`;
-            const existing = dateMap.get(iso) || [];
-            for (const code of foundMolds) {
-                if (!existing.includes(code)) existing.push(code);
-            }
-            dateMap.set(iso, existing);
-        } else if (foundMolds.length > 0) {
-            for (const code of foundMolds) {
-                if (!ungroupedMolds.includes(code)) ungroupedMolds.push(code);
-            }
-        }
-    }
-
-    const outputLines = [];
-    if (dateMap.size > 0) {
-        for (const d of Array.from(dateMap.keys()).sort()) {
-            outputLines.push(`${d} | ${dateMap.get(d).join(", ")}`);
-        }
-    }
-    if (ungroupedMolds.length > 0) {
-        const startOffset = outputLines.length;
-        for (let i = 0; i < ungroupedMolds.length; i += 3) {
-            const chunk = ungroupedMolds.slice(i, i + 3);
-            const dayDate = addDaysISO(monthStartISO, startOffset + Math.floor(i / 3));
-            outputLines.push(`${dayDate} | ${chunk.join(", ")}`);
-        }
-    }
-    if (outputLines.length === 0) {
-        return lines.map((line, idx) => `${addDaysISO(monthStartISO, Math.floor(idx / 3))} | ${line}`).join("\n");
-    }
-    return outputLines.join("\n");
-}
-
-document.getElementById("auto-distribute-80-btn").addEventListener("click", () => {
-    const startISO = planStartDateInput.value || getMonthFirstDayISO(activeDate);
-    const currentText = datewiseTextarea.value.trim();
-    const extracted = [];
-    for (const line of currentText.split(/\r?\n/)) {
-        const contentPart = line.includes("|") ? line.split("|").slice(1).join("|") : line;
-        for (const p of contentPart.split(/[,;]+/).map((s) => s.trim()).filter(Boolean)) {
-            extracted.push(p);
-        }
-    }
-    if (extracted.length === 0) {
-        showToast("Enter or scan mold numbers first");
-        return;
-    }
-    const mappedLines = [];
-    for (let i = 0; i < extracted.length; i += 3) {
-        const slice = extracted.slice(i, i + 3);
-        const slotDate = addDaysISO(startISO, Math.floor(i / 3));
-        mappedLines.push(`${slotDate} | ${slice.join(", ")}`);
-    }
-    datewiseTextarea.value = mappedLines.join("\n");
-    updateParsedCounter();
-    showToast(`Mapped ${extracted.length} molds (3/day)`);
-});
-
-planPhotoInput.addEventListener("change", async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const previewUrl = URL.createObjectURL(file);
-    planPhotoPreview.src = previewUrl;
-    planPhotoPreview.classList.remove("hidden");
-    planPhotoPlaceholder.classList.add("hidden");
-
-    ocrProgressBox.classList.remove("hidden");
-    ocrStatusText.textContent = "Scanning plan photo...";
-    ocrPercent.textContent = "5%";
-    ocrProgressBar.style.width = "5%";
-
-    try {
-        if (typeof Tesseract === "undefined") throw new Error("OCR engine unavailable offline");
-        const result = await Tesseract.recognize(file, "eng", {
-            logger: (m) => {
-                if (m.status === "recognizing text" && typeof m.progress === "number") {
-                    const pct = Math.round(m.progress * 100);
-                    ocrPercent.textContent = `${pct}%`;
-                    ocrProgressBar.style.width = `${pct}%`;
-                }
-            }
-        });
-
-        lastRawOcrText = result.data.text || "";
-        const startISO = planStartDateInput.value || getMonthFirstDayISO(activeDate);
-        datewiseTextarea.value = convertOcrTextToDateWiseFormat(lastRawOcrText, startISO);
-        ocrStatusText.textContent = "Scan complete — review text below";
-        updateParsedCounter();
-        showToast("Plan photo converted to text");
-    } catch {
-        ocrStatusText.textContent = "Could not auto-read image; edit manually or use Auto-Map.";
-        showToast("OCR scan failed — edit manually");
-    }
-});
-
-function parseDateWiseLines(text) {
-    const entries = [];
-    for (const line of text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
-        const match = line.match(/^(\d{4}-\d{2}-\d{2})\s*\|\s*(.+)$/);
-        if (!match) continue;
-        const dateStr = match[1];
-        for (const moldCode of match[2].split(/[,;]+/).map((m) => m.trim()).filter(Boolean)) {
-            entries.push({ dateStr, moldCode });
-        }
-    }
-    return entries;
-}
-
-function updateParsedCounter() {
-    const parsed = parseDateWiseLines(datewiseTextarea.value);
-    const uniqueDays = new Set(parsed.map((p) => p.dateStr)).size;
-    parsedSummaryLabel.textContent = `${parsed.length} molds across ${uniqueDays} calendar dates ready to save`;
-}
-
-datewiseTextarea.addEventListener("input", updateParsedCounter);
-
-document.getElementById("copy-datewise-text-btn").addEventListener("click", async () => {
-    try {
-        await navigator.clipboard.writeText(datewiseTextarea.value);
-        showToast("Date-wise text copied");
-    } catch {
-        datewiseTextarea.select();
-        document.execCommand("copy");
-        showToast("Text copied");
-    }
-});
-
-document.getElementById("import-replace-btn").addEventListener("click", async () => {
-    const parsed = parseDateWiseLines(datewiseTextarea.value);
-    if (parsed.length === 0) {
-        showToast("Use format: YYYY-MM-DD | MOLD-01, MOLD-02, MOLD-03");
+    if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-center font-mono text-xs text-stone-400">No PM plan rows for selected filter.</td></tr>`;
         return;
     }
 
-    const affectedMonths = new Set(parsed.map((p) => p.dateStr.slice(0, 7)));
-    const existingInTargetMonths = allTools.filter((t) => affectedMonths.has(t.scheduledDate.slice(0, 7)));
-    for (const oldItem of existingInTargetMonths) {
-        await deleteByIdFromStore(STORE_TOOLS, oldItem.id);
-    }
-
-    for (let i = 0; i < parsed.length; i++) {
-        const { dateStr, moldCode } = parsed[i];
-        await putToStore(STORE_TOOLS, {
-            id: `tool_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 5)}`,
-            toolCode: moldCode.toUpperCase(),
-            moldName: `Mold ${moldCode.toUpperCase()}`,
-            actualMold: "",
-            machineNo: `IMM-${String((i % 12) + 1).padStart(2, "0")}`,
-            originalDate: dateStr,
-            scheduledDate: dateStr,
-            status: "Scheduled",
-            note: "",
-            beforePhoto: null,
-            afterPhoto: null,
-            remarks: ""
-        });
-    }
-
-    activeDate = parsed[0].dateStr;
-    if (dateInput) dateInput.value = activeDate;
-    if (headerDateSearchInput) headerDateSearchInput.value = activeDate;
-    const [y, m] = activeDate.split("-").map(Number);
-    setCalendarMonth(y, m - 1, false);
-
-    ocrModal.classList.add("hidden");
-    ocrModal.classList.remove("flex");
-    await refreshAll();
-    showToast(`Saved ${parsed.length} molds to calendar dates`);
-});
-
-// =========================================================
-// Before / After Photo & Completion Modal
-// =========================================================
-const photoModal = document.getElementById("photo-modal");
-const modalTitle = document.getElementById("modal-tool-title");
-const beforeInput = document.getElementById("before-photo-input");
-const afterInput = document.getElementById("after-photo-input");
-const beforePreview = document.getElementById("before-photo-preview");
-const afterPreview = document.getElementById("after-photo-preview");
-const beforePlaceholder = document.getElementById("before-photo-placeholder");
-const afterPlaceholder = document.getElementById("after-photo-placeholder");
-const remarksInput = document.getElementById("pm-remarks");
-
-function setPhotoSlot(imgEl, placeholderEl, dataUrl) {
-    if (dataUrl && dataUrl !== "__IDB_PHOTO__") {
-        imgEl.src = dataUrl;
-        imgEl.classList.remove("hidden");
-        placeholderEl.classList.add("hidden");
-    } else {
-        imgEl.src = "";
-        imgEl.classList.add("hidden");
-        placeholderEl.classList.remove("hidden");
-    }
-}
-
-function openPhotoModal(toolId) {
-    const tool = allTools.find((t) => t.id === toolId);
-    if (!tool) return;
-    activeModalToolId = tool.id;
-    draftBeforePhoto = tool.beforePhoto && tool.beforePhoto !== "__IDB_PHOTO__" ? tool.beforePhoto : null;
-    draftAfterPhoto = tool.afterPhoto && tool.afterPhoto !== "__IDB_PHOTO__" ? tool.afterPhoto : null;
-    remarksInput.value = tool.remarks || "";
-
-    modalTitle.textContent = `${tool.toolCode} — ${tool.moldName} (${tool.scheduledDate})`;
-    setPhotoSlot(beforePreview, beforePlaceholder, draftBeforePhoto);
-    setPhotoSlot(afterPreview, afterPlaceholder, draftAfterPhoto);
-
-    photoModal.classList.remove("hidden");
-    photoModal.classList.add("flex");
-}
-
-function closePhotoModal() {
-    activeModalToolId = null;
-    draftBeforePhoto = null;
-    draftAfterPhoto = null;
-    beforeInput.value = "";
-    afterInput.value = "";
-    photoModal.classList.add("hidden");
-    photoModal.classList.remove("flex");
-}
-
-document.getElementById("remove-before-photo-btn").addEventListener("click", () => {
-    draftBeforePhoto = null;
-    beforeInput.value = "";
-    setPhotoSlot(beforePreview, beforePlaceholder, null);
-    showToast("Before photo cleared");
-});
-
-document.getElementById("remove-after-photo-btn").addEventListener("click", () => {
-    draftAfterPhoto = null;
-    afterInput.value = "";
-    setPhotoSlot(afterPreview, afterPlaceholder, null);
-    showToast("After photo cleared");
-});
-
-document.getElementById("delete-from-photo-btn").addEventListener("click", async () => {
-    if (!activeModalToolId) return;
-    await deleteToolRecord(activeModalToolId);
-});
-
-beforeInput.addEventListener("change", async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    draftBeforePhoto = await compressImageFile(file);
-    setPhotoSlot(beforePreview, beforePlaceholder, draftBeforePhoto);
-    showToast("Before photo compressed");
-});
-
-afterInput.addEventListener("change", async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    draftAfterPhoto = await compressImageFile(file);
-    setPhotoSlot(afterPreview, afterPlaceholder, draftAfterPhoto);
-    showToast("After photo compressed");
-});
-
-async function saveModalChanges(markCompleted) {
-    const tool = allTools.find((t) => t.id === activeModalToolId);
-    if (!tool) return;
-
-    tool.beforePhoto = draftBeforePhoto;
-    tool.afterPhoto = draftAfterPhoto;
-    tool.remarks = remarksInput.value.trim();
-
-    if (markCompleted) {
-        tool.status = "PM Completed";
-        tool.completedAt = new Date().toISOString();
-    }
-
-    await putToStore(STORE_TOOLS, tool);
-    writeLocalStorageMirror(allTools, allBreakdowns);
-    closePhotoModal();
-    await refreshAll();
-    showToast(markCompleted ? "PM marked completed" : "Photos saved");
-}
-
-document.getElementById("close-modal-btn").addEventListener("click", closePhotoModal);
-document.getElementById("save-photos-only-btn").addEventListener("click", () => saveModalChanges(false));
-document.getElementById("complete-pm-btn").addEventListener("click", () => saveModalChanges(true));
-
-function getStatusBadge(status) {
-    if (status === "PM Completed") {
-        return `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">PM Completed</span>`;
-    }
-    if (status === "Swapped / Rescheduled") {
-        return `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-sky-500/15 text-sky-300 border border-sky-500/30">Swapped / Rescheduled</span>`;
-    }
-    return `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30">Scheduled</span>`;
-}
-
-function selectCalendarDate(dateStr, syncTextInput = true) {
-    activeDate = dateStr;
-    if (dateInput) dateInput.value = dateStr;
-    if (syncTextInput && headerDateSearchInput) headerDateSearchInput.value = dateStr;
-    const [y, m] = dateStr.split("-").map(Number);
-    calYear = y;
-    calMonth = m - 1;
-    if (monthSelect) monthSelect.value = String(calMonth);
-    if (yearSelect) {
-        const existingYears = Array.from(yearSelect.options).map((o) => Number(o.value));
-        if (!existingYears.includes(calYear)) populateYearOptions(calYear);
-        yearSelect.value = String(calYear);
-    }
-    renderAll();
-}
-
-function renderTwelveMonthPills() {
-    const pillsContainer = document.getElementById("twelve-month-pills");
-    pillsContainer.innerHTML = MONTH_SHORT.map((shortLabel, idx) => {
-        const prefix = getYearMonthPrefix(calYear, idx);
-        const count = allTools.filter((t) => t.scheduledDate.startsWith(prefix)).length;
-        const isCurrent = idx === calMonth;
+    tbody.innerHTML = rows.map((t, idx) => {
+        const photoCount = (t.beforePhoto ? 1 : 0) + (t.afterPhoto ? 1 : 0);
+        const statusColor = t.status === "PM Completed" ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/40" : "text-amber-300 bg-amber-500/15 border-amber-500/40";
         return `
-            <button
-                type="button"
-                onclick="setCalendarMonth(${calYear}, ${idx}, true)"
-                class="shrink-0 px-3 py-1.5 rounded-lg border transition flex items-center gap-1.5 ${
-                    isCurrent
-                        ? "border-amber-400 bg-amber-400/15 text-amber-300 font-bold"
-                        : "border-stone-800 bg-[#0b0d11] hover:border-stone-600 text-stone-300"
-                }"
-            >
-                <span>${shortLabel}</span>
-                <span class="px-1.5 py-0.2 rounded bg-stone-800 text-[10px] text-stone-200">${count}</span>
-            </button>
+            <tr class="hover:bg-stone-900/60 align-top">
+                <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs text-amber-300 whitespace-nowrap">${t.scheduledDate || "—"}</td>
+                <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs">${idx + 1}</td>
+                <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono font-bold text-white">${t.toolCode || "—"}</td>
+                <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs text-sky-300">${t.exchangeMould || "—"}</td>
+                <td class="py-2.5 px-3 border-r border-stone-800/80">
+                    <button type="button" onclick="openPmModal('${t.id}')" class="px-2 py-0.5 rounded border font-mono text-[11px] ${statusColor}">
+                        ${t.status || "Scheduled"}
+                    </button>
+                </td>
+                <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs">
+                    <button type="button" onclick="openPmModal('${t.id}')" class="px-2 py-1 rounded bg-stone-800 hover:bg-stone-700 text-sky-300">
+                        ${photoCount ? `Photo (${photoCount})` : "+ Photo"}
+                    </button>
+                </td>
+                <td class="py-2.5 px-3 border-r border-stone-800/80 text-xs text-stone-200">${t.remarks || "—"}</td>
+                <td class="py-2.5 px-3 font-mono text-xs text-rose-300">${t.postpondMould || "—"}</td>
+            </tr>
         `;
     }).join("");
 }
 
-function renderCalendarGrid() {
-    document.getElementById("calendar-month-heading").textContent = `${MONTH_NAMES[calMonth]} ${calYear}`;
-    renderTwelveMonthPills();
+function renderPmHistoryTable() {
+    const tbody = document.getElementById("pm-history-tbody");
+    const q = document.getElementById("global-mould-search").value.trim().toLowerCase();
+    const filterDate = document.getElementById("pm-hist-date-filter").value.trim();
 
-    const grid = document.getElementById("calendar-days-grid");
-    const firstWeekday = new Date(calYear, calMonth, 1).getDay();
-    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
-
-    const byDate = new Map();
-    for (const tool of allTools) {
-        const list = byDate.get(tool.scheduledDate) || [];
-        list.push(tool);
-        byDate.set(tool.scheduledDate, list);
+    let rows = toolsData.filter((t) => t.status === "PM Completed" || t.beforePhoto || t.afterPhoto);
+    if (!pmHistAllDates && filterDate) {
+        rows = rows.filter((t) => t.scheduledDate === filterDate);
+    }
+    if (q) {
+        rows = rows.filter((t) =>
+            [t.toolCode, t.status, t.remarks, t.scheduledDate].join(" ").toLowerCase().includes(q)
+        );
     }
 
-    const cells = [];
-    for (let i = 0; i < firstWeekday; i++) {
-        cells.push(`<div class="min-h-[76px] sm:min-h-[88px] rounded-xl border border-stone-900/60 bg-[#0a0c10]/50"></div>`);
-    }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-        const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-        const dayTools = byDate.get(dateStr) || [];
-        const doneCount = dayTools.filter((t) => t.status === "PM Completed").length;
-        const swapCount = dayTools.filter((t) => t.status === "Swapped / Rescheduled").length;
-        const allDoneOnDate = dayTools.length > 0 && doneCount === dayTools.length;
-
-        const isSelected = dateStr === activeDate;
-        const isToday = dateStr === todayISO;
-
-        const borderClass = isSelected
-            ? "border-amber-400 ring-1 ring-amber-400/60 bg-[#171c26]"
-            : allDoneOnDate
-            ? "border-emerald-500/40 bg-[#0e1714] hover:border-emerald-400/70"
-            : isToday
-            ? "border-sky-400/60 bg-[#131822]"
-            : "border-stone-800/90 bg-[#0b0d11] hover:border-stone-600";
-
-        cells.push(`
-            <button
-                type="button"
-                onclick="selectCalendarDate('${dateStr}')"
-                class="min-h-[76px] sm:min-h-[88px] rounded-xl border ${borderClass} p-1.5 sm:p-2 text-left flex flex-col justify-between transition"
-            >
-                <div class="flex items-center justify-between w-full font-mono text-xs">
-                    <span class="${isSelected ? "text-amber-300 font-bold" : "text-stone-300"}">${day}</span>
-                    ${
-                        allDoneOnDate
-                            ? `<span class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">PM DONE</span>`
-                            : isToday
-                            ? `<span class="text-[9px] px-1 rounded bg-sky-500/20 text-sky-300">TODAY</span>`
-                            : ""
-                    }
-                </div>
-
-                <div class="space-y-1 w-full">
-                    ${
-                        dayTools.length > 0
-                            ? `<div class="text-[10px] font-mono text-amber-300 truncate">${dayTools.map((x) => x.actualMold ? `${x.toolCode}(${x.actualMold})` : x.toolCode).join(", ")}</div>`
-                            : `<div class="text-[10px] font-mono text-stone-600">—</div>`
-                    }
-                    ${
-                        swapCount > 0
-                            ? `<div class="text-[9px] font-mono text-sky-300 truncate">${swapCount} swapped</div>`
-                            : ""
-                    }
-                </div>
-            </button>
-        `);
-    }
-
-    grid.innerHTML = cells.join("");
-}
-
-function renderClickedDateStatusBanner(selectedDayTools) {
-    const badgeEl = document.getElementById("clicked-date-badge");
-    const summaryEl = document.getElementById("clicked-date-summary");
-    const quickActionsEl = document.getElementById("clicked-date-quick-actions");
-
-    badgeEl.textContent = `Calendar Date Record • ${activeDate}`;
-
-    if (selectedDayTools.length === 0) {
-        summaryEl.innerHTML = `No PM entry saved behind <span class="font-mono text-amber-300">${activeDate}</span> yet.`;
-        quickActionsEl.innerHTML = "";
+    if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center font-mono text-xs text-stone-400">No PM history records found.</td></tr>`;
         return;
     }
 
-    const doneTools = selectedDayTools.filter((t) => t.status === "PM Completed");
-    const pendingTools = selectedDayTools.filter((t) => t.status !== "PM Completed");
-    const formatToolLabel = (t) => (t.actualMold ? `${t.toolCode} → Exchange: ${t.actualMold}` : `${t.toolCode} (${t.moldName})`);
+    tbody.innerHTML = rows.map((t, idx) => {
+        const thumbs = [
+            t.beforePhoto ? `<img src="${t.beforePhoto}" alt="Before" class="w-11 h-11 object-cover rounded border border-stone-700" />` : "",
+            t.afterPhoto ? `<img src="${t.afterPhoto}" alt="After" class="w-11 h-11 object-cover rounded border border-emerald-600/50" />` : ""
+        ].filter(Boolean).join("");
 
-    if (doneTools.length === selectedDayTools.length) {
-        summaryEl.innerHTML = `<span class="text-emerald-400 font-bold">&#10004; PM Completed on ${activeDate}</span> — ${doneTools.map(formatToolLabel).join(", ")}`;
-    } else if (doneTools.length > 0) {
-        summaryEl.innerHTML = `<span class="text-amber-300 font-bold">Partial PM on ${activeDate}:</span> ${doneTools.length} completed, ${pendingTools.length} pending`;
-    } else {
-        summaryEl.innerHTML = `<span class="text-amber-300 font-bold">Scheduled on ${activeDate}:</span> ${selectedDayTools.map((t) => `${formatToolLabel(t)} [${t.status}]`).join(", ")}`;
-    }
-
-    quickActionsEl.innerHTML = selectedDayTools
-        .map(
-            (t) => `
-            <span class="inline-flex items-center gap-1 rounded-lg bg-[#11151d] border border-stone-800 px-2 py-1 text-[11px] font-mono">
-                <span class="text-amber-300 font-semibold">${t.toolCode}</span>
-                <button type="button" onclick="openEditModal('${t.id}')" class="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-sky-300 transition">Edit</button>
-                <button type="button" onclick="deleteToolRecord('${t.id}')" class="px-1.5 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 transition">Delete</button>
-            </span>
-        `
-        )
-        .join("");
-}
-
-function renderCardCollection(containerId, list) {
-    const cardsGrid = document.getElementById(containerId);
-    if (!cardsGrid) return;
-
-    if (list.length === 0) {
-        cardsGrid.innerHTML = `
-            <div class="col-span-full rounded-2xl border border-dashed border-stone-800 bg-[#11151d]/60 p-6 text-center text-sm text-stone-400">
-                No mold PM saved for <span class="font-mono text-amber-400">${activeDate}</span>.
-            </div>
-        `;
-        return;
-    }
-
-    cardsGrid.innerHTML = list
-        .map(
-            (t) => `
-            <article class="rounded-2xl border border-stone-800 bg-[#11151d] p-5 flex flex-col justify-between gap-4 hover:border-stone-700 transition">
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <span class="font-mono text-sm font-bold text-amber-400">${t.toolCode}</span>
-                        <div class="flex items-center gap-1.5">
-                            ${getStatusBadge(t.status)}
-                            <button type="button" onclick="openEditModal('${t.id}')" class="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 transition">Edit</button>
-                            <button type="button" onclick="deleteToolRecord('${t.id}')" class="px-2 py-0.5 rounded text-[11px] font-mono bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/35 transition">Delete</button>
-                        </div>
-                    </div>
-                    <h3 class="font-bold text-base text-white">${t.moldName}</h3>
-                    <p class="text-xs font-mono text-stone-400">Machine: ${t.machineNo} &bull; Date: ${t.scheduledDate}</p>
-                    ${t.actualMold ? `<p class="text-xs font-mono text-emerald-300 bg-emerald-950/30 border border-emerald-700/40 rounded-lg p-2">Exchange Mold: ${t.actualMold}</p>` : ""}
-                    ${t.remarks ? `<p class="text-xs text-stone-300 bg-stone-900/80 border border-stone-800 rounded-lg p-2">Remark: ${t.remarks}</p>` : ""}
-                    ${t.note ? `<p class="text-xs text-sky-300/90 bg-sky-950/30 border border-sky-800/40 rounded-lg p-2">${t.note}</p>` : ""}
-                </div>
-
-                <div class="space-y-2 pt-2 border-t border-stone-800/80">
-                    <div class="flex items-center justify-between text-[11px] font-mono text-stone-400">
-                        <span>Before: ${t.beforePhoto ? "&#10004; Attached" : "—"}</span>
-                        <span>After: ${t.afterPhoto ? "&#10004; Attached" : "—"}</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2 pt-1">
-                        <button type="button" onclick="openPhotoModal('${t.id}')" class="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-100 font-mono text-xs font-semibold transition">Photos / PM Done</button>
-                        <button type="button" onclick="handleMachineRunning('${t.id}')" class="px-3 py-2 rounded-lg border border-amber-400/40 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-mono text-xs font-semibold transition">Exchange / Swap</button>
-                    </div>
-                </div>
-            </article>
-        `
-        )
-        .join("");
-}
-
-function renderAll() {
-    if (headerActiveDatePill) headerActiveDatePill.textContent = activeDate;
-
-    renderCalendarGrid();
-
-    const q = moldSearchQuery.trim();
-    const allMonthMatches = q ? getMatchingMoldsAcrossAllMonths(q) : [];
-
-    if (activeSearchBanner && activeSearchText && searchMatchesInlineList) {
-        if (q) {
-            activeSearchBanner.classList.remove("hidden");
-            activeSearchText.textContent = `All 12 Months Mold Search ("${q}") — ${allMonthMatches.length} found`;
-            searchMatchesInlineList.innerHTML = allMonthMatches.length
-                ? allMonthMatches
-                      .map((t) => {
-                          const [y, m] = (t.scheduledDate || "").split("-").map(Number);
-                          const mLabel = m ? `${MONTH_SHORT[m - 1]} ${y}` : t.scheduledDate;
-                          return `
-                              <button type="button" onclick="jumpToToolAcrossMonths('${t.id}')" class="rounded-xl border border-stone-800 bg-[#0b0d11] hover:border-amber-400 p-3 text-left transition flex items-center justify-between gap-2">
-                                  <div class="min-w-0">
-                                      <div class="font-mono text-xs flex items-center gap-1.5">
-                                          <span class="font-bold text-amber-400">${t.toolCode}</span>
-                                          <span class="px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-300 text-[10px]">${mLabel}</span>
-                                          <span class="text-stone-400 text-[11px]">${t.scheduledDate}</span>
-                                      </div>
-                                      <div class="text-xs text-stone-200 truncate mt-0.5">${t.moldName} (${t.machineNo})</div>
-                                  </div>
-                                  <span class="text-[11px] font-mono text-amber-300 shrink-0">Open &rarr;</span>
-                              </button>
-                          `;
-                      })
-                      .join("")
-                : `<div class="col-span-full text-xs font-mono text-stone-400">No mold found across any month.</div>`;
-        } else {
-            activeSearchBanner.classList.add("hidden");
-            activeSearchText.textContent = "";
-            searchMatchesInlineList.innerHTML = "";
-        }
-    }
-
-    const ymPrefix = getYearMonthPrefix(calYear, calMonth);
-    const monthTools = allTools.filter((t) => t.scheduledDate.startsWith(ymPrefix));
-    const selectedDayTools = allTools.filter((t) => t.scheduledDate === activeDate);
-    const completedOnDay = selectedDayTools.filter((t) => t.status === "PM Completed").length;
-    const swappedInMonth = monthTools.filter((t) => t.status === "Swapped / Rescheduled").length;
-
-    document.getElementById("stat-day-count").textContent = `${completedOnDay} / ${Math.max(3, selectedDayTools.length)}`;
-    document.getElementById("stat-swapped-count").textContent = String(swappedInMonth);
-    document.getElementById("stat-month-tools").textContent = String(monthTools.length);
-
-    renderClickedDateStatusBanner(selectedDayTools);
-    document.getElementById("daily-section-heading").textContent = `Daily PM Plan — ${activeDate}`;
-    renderCardCollection("daily-cards-grid", selectedDayTools);
-
-    // Present PM Plan View
-    const presentPmHeading = document.getElementById("present-pm-view-heading");
-    if (presentPmHeading) presentPmHeading.textContent = `Present PM Plan — ${MONTH_NAMES[calMonth]} ${calYear}`;
-    renderCardCollection("present-pm-view-cards", [...monthTools].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate)));
-
-    // Month PM Plan Table (Columns: PM Schedule | Exchange | Status | Photo | Edit)
-    const rowsToShow = q ? [...allMonthMatches] : tableShowAllDates ? [...allTools] : [...monthTools];
-    rowsToShow.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
-
-    document.getElementById("pm-schedule-heading").textContent = q
-        ? `Search Results Across All Months ("${q}") (${rowsToShow.length})`
-        : tableShowAllDates
-        ? `All Month PM Plan (${rowsToShow.length})`
-        : `Month PM Plan — ${MONTH_NAMES[calMonth]} ${calYear} (${rowsToShow.length})`;
-
-    const tableBody = document.getElementById("schedule-table-body");
-    if (rowsToShow.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-stone-500 font-mono text-xs">No PM plan entries found</td></tr>`;
-    } else {
-        tableBody.innerHTML = rowsToShow
-            .map(
-                (t) => `
-                <tr class="hover:bg-stone-900/50 cursor-pointer" onclick="selectCalendarDate('${t.scheduledDate}')">
-                    <td class="py-3 px-4">
-                        <div class="font-mono text-xs font-bold text-amber-400">${t.toolCode} • ${t.scheduledDate}</div>
-                        <div class="text-sm text-stone-100">${t.moldName} (${t.machineNo})</div>
-                    </td>
-                    <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
-                        <input
-                            type="text"
-                            value="${escapeHtmlAttr(t.actualMold || "")}"
-                            placeholder="Exchange mold..."
-                            onchange="saveActualMoldSelf('${t.id}', this.value)"
-                            onkeydown="if (event.key === 'Enter') { this.blur(); }"
-                            class="w-40 sm:w-44 bg-[#0b0d11] border border-emerald-500/35 focus:border-emerald-400 rounded-lg px-2.5 py-1.5 text-xs font-mono text-emerald-200 placeholder-stone-500 focus:outline-none"
-                        />
-                    </td>
-                    <td class="py-3 px-4 whitespace-nowrap">${getStatusBadge(t.status)}</td>
-                    <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
-                        <button type="button" onclick="openPhotoModal('${t.id}')" class="underline font-mono text-xs text-amber-300 hover:text-amber-200">
-                            ${t.beforePhoto || t.afterPhoto ? "View Photo" : "Add Photo"}
+        return `
+            <tr class="hover:bg-stone-900/60 align-top">
+                <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs">${idx + 1}</td>
+                <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono font-bold text-white">
+                    <div>${t.toolCode || "—"}</div>
+                    <div class="text-[10px] text-stone-400">${t.scheduledDate || ""}</div>
+                </td>
+                <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs text-emerald-300">${t.status || "PM Completed"}</td>
+                <td class="py-2.5 px-3 border-r border-stone-800/80 text-xs text-stone-200">${t.remarks || "—"}</td>
+                <td class="py-2.5 px-3">
+                    <div class="flex items-center gap-1.5">
+                        ${thumbs || `<span class="text-xs font-mono text-stone-500">No photo</span>`}
+                        <button type="button" onclick="openPmModal('${t.id}')" class="px-2 py-1 rounded bg-stone-800 hover:bg-stone-700 font-mono text-[11px] text-amber-300">
+                            Edit
                         </button>
-                    </td>
-                    <td class="py-3 px-4 whitespace-nowrap" onclick="event.stopPropagation()">
-                        <div class="flex items-center gap-2 font-mono text-xs">
-                            <button type="button" onclick="openEditModal('${t.id}')" class="underline text-sky-300 hover:text-sky-200">Edit</button>
-                            <button type="button" onclick="deleteToolRecord('${t.id}')" class="underline text-rose-300 hover:text-rose-200">Delete</button>
-                        </div>
-                    </td>
-                </tr>
-            `
-            )
-            .join("");
-    }
-
-    // PM History View
-    const doneTools = allTools
-        .filter((t) => t.status === "PM Completed")
-        .sort((a, b) => b.scheduledDate.localeCompare(a.scheduledDate));
-    const viewPmDoneCount = document.getElementById("view-pm-done-count");
-    if (viewPmDoneCount) viewPmDoneCount.textContent = String(doneTools.length);
-
-    const viewPmHistoryBody = document.getElementById("view-pm-history-tbody");
-    if (viewPmHistoryBody) {
-        viewPmHistoryBody.innerHTML = doneTools.length
-            ? doneTools
-                  .map(
-                      (t) => `
-                  <tr class="hover:bg-stone-900/50">
-                      <td class="py-3 px-4">
-                          <div class="font-mono text-xs font-bold text-emerald-300">${t.toolCode} • ${t.scheduledDate}</div>
-                          <div class="text-sm text-stone-100">${t.moldName} (${t.machineNo})</div>
-                      </td>
-                      <td class="py-3 px-4 font-mono text-xs text-stone-300">${t.actualMold || "—"}</td>
-                      <td class="py-3 px-4 whitespace-nowrap">${getStatusBadge(t.status)}</td>
-                      <td class="py-3 px-4 whitespace-nowrap">
-                          <button type="button" onclick="openPhotoModal('${t.id}')" class="underline font-mono text-xs text-amber-300">
-                              ${t.beforePhoto || t.afterPhoto ? "View Photo" : "Add Photo"}
-                          </button>
-                      </td>
-                      <td class="py-3 px-4 whitespace-nowrap font-mono text-xs">
-                          <div class="flex items-center gap-2">
-                              <button type="button" onclick="openEditModal('${t.id}')" class="underline text-sky-300">Edit</button>
-                              <button type="button" onclick="deleteToolRecord('${t.id}')" class="underline text-rose-300">Delete</button>
-                          </div>
-                      </td>
-                  </tr>
-              `
-                  )
-                  .join("")
-            : `<tr><td colspan="5" class="py-6 text-center text-stone-500 font-mono text-xs">No completed PM history yet</td></tr>`;
-    }
-
-    renderBreakdownSection();
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join("");
 }
 
-async function refreshAll() {
-    let idbTools = await getAllFromStore(STORE_TOOLS);
-    let idbBreakdowns = await getAllFromStore(STORE_BREAKDOWNS);
-    const mirror = readLocalStorageMirror();
+function renderPresentBreakdownTable() {
+    const tbody = document.getElementById("present-bd-tbody");
+    const q = document.getElementById("global-mould-search").value.trim().toLowerCase();
+    const dateQ = document.getElementById("global-date-search").value.trim();
 
-    if (idbTools.length === 0 && mirror && mirror.tools.length > 0) {
-        idbTools = mirror.tools;
-        for (const t of idbTools) await putToStore(STORE_TOOLS, t);
+    let rows = breakdownsData.filter((b) => (b.date || "").startsWith(PRESENT_MONTH_PREFIX));
+    if (dateQ) {
+        rows = rows.filter((b) => b.date === dateQ);
+    } else if (!presentBdAllMonth && selectedDate) {
+        rows = rows.filter((b) => b.date === selectedDate);
     }
-    if (idbBreakdowns.length === 0 && mirror && mirror.breakdowns.length > 0) {
-        idbBreakdowns = mirror.breakdowns;
-        for (const b of idbBreakdowns) await putToStore(STORE_BREAKDOWNS, b);
+    if (q) {
+        rows = rows.filter((b) =>
+            [b.toolCode, b.bdStatus, b.issue, b.machineNo, b.remarks, b.date].join(" ").toLowerCase().includes(q)
+        );
     }
 
-    allTools = idbTools;
-    allBreakdowns = idbBreakdowns;
-    writeLocalStorageMirror(allTools, allBreakdowns);
-    renderAll();
-    if (moldSearchQuery.trim()) renderHeaderMoldSearchDropdown();
+    rows.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+    if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center font-mono text-xs text-stone-400">No present month breakdown records.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = rows.map((b, idx) => `
+        <tr class="hover:bg-stone-900/60">
+            <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs">${idx + 1}</td>
+            <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs text-rose-300 whitespace-nowrap">${b.date || "—"}</td>
+            <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono font-bold text-white">${b.toolCode || "—"}</td>
+            <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs text-amber-300">${b.bdStatus || "—"}</td>
+            <td class="py-2.5 px-3 border-r border-stone-800/80 text-xs text-stone-100">${b.issue || "—"}</td>
+            <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs text-sky-300">${b.machineNo || "—"}</td>
+            <td class="py-2.5 px-3 text-xs text-stone-300">
+                <div class="flex items-center justify-between gap-2">
+                    <span>${b.remarks || "—"}</span>
+                    <button type="button" onclick="deleteBreakdown('${b.id}')" class="text-rose-400 hover:underline font-mono text-[11px]">Del</button>
+                </div>
+            </td>
+        </tr>
+    `).join("");
 }
 
-if (dateInput) {
-    dateInput.addEventListener("change", (e) => {
-        const val = e.target.value || todayISO;
-        selectCalendarDate(val);
-        showToast(`Jumped to ${val}`);
-    });
+function renderAllBreakdownTable() {
+    const tbody = document.getElementById("all-bd-tbody");
+    const q = document.getElementById("global-mould-search").value.trim().toLowerCase();
+    const dateFilter = document.getElementById("all-bd-date-filter").value.trim() || document.getElementById("global-date-search").value.trim();
+
+    let rows = [...breakdownsData];
+    if (dateFilter) {
+        rows = rows.filter((b) => b.date === dateFilter);
+    }
+    if (q) {
+        rows = rows.filter((b) =>
+            [b.toolCode, b.issue, b.remarks, b.machineNo, b.date, b.bdStatus].join(" ").toLowerCase().includes(q)
+        );
+    }
+
+    rows.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+    if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center font-mono text-xs text-stone-400">No breakdown records across all months.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = rows.map((b, idx) => `
+        <tr class="hover:bg-stone-900/60">
+            <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs">${idx + 1}</td>
+            <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs text-rose-300 whitespace-nowrap">${b.date || "—"}</td>
+            <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono font-bold text-white">${b.toolCode || "—"}</td>
+            <td class="py-2.5 px-3 border-r border-stone-800/80 text-xs text-stone-100">${b.issue || "—"}</td>
+            <td class="py-2.5 px-3 border-r border-stone-800/80 text-xs text-stone-300">${b.remarks || "—"}</td>
+            <td class="py-2.5 px-3 font-mono text-xs text-sky-300">
+                <div class="flex items-center justify-between gap-2">
+                    <span>${b.machineNo || "—"}</span>
+                    <button type="button" onclick="deleteBreakdown('${b.id}')" class="text-rose-400 hover:underline font-mono text-[11px]">Del</button>
+                </div>
+            </td>
+        </tr>
+    `).join("");
 }
 
-function openAddFormForActiveDate() {
-    document.getElementById("new-tool-date").value = activeDate;
-    addPanel.classList.remove("hidden");
-    addPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+function renderPhotosHistoryGallery() {
+    const grid = document.getElementById("photos-gallery-grid");
+    const q = document.getElementById("global-mould-search").value.trim().toLowerCase();
+    const dateQ = document.getElementById("global-date-search").value.trim();
+
+    let items = getAllSavedPhotos();
+    if (dateQ) items = items.filter((p) => p.date === dateQ);
+    if (q) items = items.filter((p) => [p.toolCode, p.remarks, p.date, p.stage].join(" ").toLowerCase().includes(q));
+
+    document.getElementById("photos-gallery-count").textContent = `${items.length} pics`;
+
+    if (!items.length) {
+        grid.innerHTML = `<div class="col-span-full py-8 text-center font-mono text-xs text-stone-400">No PM mould photos uploaded yet.</div>`;
+        return;
+    }
+
+    grid.innerHTML = items.map((p) => `
+        <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-3 space-y-2.5">
+            <div class="flex items-center justify-between text-xs font-mono border-b border-stone-800 pb-2">
+                <span class="font-bold text-amber-300">MOULD: ${p.toolCode || "—"}</span>
+                <span class="text-sky-300">DATE: ${p.date || "—"}</span>
+            </div>
+            <img src="${p.photo}" alt="${p.toolCode || "PM"} - ${p.date || ""}" class="w-full h-40 object-cover rounded-lg border border-stone-800" />
+            <div class="flex items-center justify-between text-[11px] font-mono">
+                <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">${p.stage || "PM PHOTO"}</span>
+                <span class="text-stone-400 truncate max-w-[160px]">${p.remarks || ""}</span>
+            </div>
+        </div>
+    `).join("");
 }
 
-document.getElementById("open-add-tool-btn").addEventListener("click", () => {
-    document.getElementById("new-tool-date").value = activeDate;
-    addPanel.classList.toggle("hidden");
-});
+function renderGlobalSearchDropdown() {
+    const box = document.getElementById("global-search-results");
+    const q = document.getElementById("global-mould-search").value.trim().toLowerCase();
+    const dateQ = document.getElementById("global-date-search").value.trim();
 
-document.getElementById("quick-add-for-selected-date-btn").addEventListener("click", openAddFormForActiveDate);
+    if (!q && !dateQ) {
+        box.classList.add("hidden");
+        box.innerHTML = "";
+        return;
+    }
 
-const filterMonthBtn = document.getElementById("filter-month-btn");
-const filterAllBtn = document.getElementById("filter-all-btn");
+    const pmMatches = toolsData
+        .filter((t) => {
+            const matchText = !q || [t.toolCode, t.exchangeMould, t.postpondMould, t.remarks, t.status].join(" ").toLowerCase().includes(q);
+            const matchDate = !dateQ || t.scheduledDate === dateQ;
+            return matchText && matchDate;
+        })
+        .map((t) => ({
+            page: "present-pm",
+            label: `PM • ${t.toolCode || ""}`,
+            sub: `${t.scheduledDate || ""} • ${t.status || ""}`,
+            date: t.scheduledDate || ""
+        }));
 
-filterMonthBtn.addEventListener("click", () => {
-    tableShowAllDates = false;
-    filterMonthBtn.className = "px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300";
-    filterAllBtn.className = "px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400";
-    renderAll();
-});
+    const bdMatches = breakdownsData
+        .filter((b) => {
+            const matchText = !q || [b.toolCode, b.issue, b.remarks, b.machineNo, b.bdStatus].join(" ").toLowerCase().includes(q);
+            const matchDate = !dateQ || b.date === dateQ;
+            return matchText && matchDate;
+        })
+        .map((b) => ({
+            page: "breakdown-history",
+            label: `BD • ${b.toolCode || ""}`,
+            sub: `${b.date || ""} • ${b.issue || ""} (${b.machineNo || ""})`,
+            date: b.date || ""
+        }));
 
-filterAllBtn.addEventListener("click", () => {
-    tableShowAllDates = true;
-    filterAllBtn.className = "px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300";
-    filterMonthBtn.className = "px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400";
-    renderAll();
-});
+    const combined = [...pmMatches, ...bdMatches].slice(0, 15);
+    box.classList.remove("hidden");
 
-document.getElementById("add-tool-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const sched = fd.get("scheduledDate") || activeDate;
-    const item = {
-        id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-        toolCode: String(fd.get("toolCode")).trim().toUpperCase(),
-        moldName: String(fd.get("moldName")).trim(),
-        actualMold: "",
-        machineNo: String(fd.get("machineNo")).trim().toUpperCase(),
-        originalDate: sched,
-        scheduledDate: sched,
-        status: "Scheduled",
-        note: "",
-        beforePhoto: null,
-        afterPhoto: null,
-        remarks: ""
+    if (!combined.length) {
+        box.innerHTML = `<div class="p-3 font-mono text-[11px] text-stone-400">No matching mould/date across pages.</div>`;
+        return;
+    }
+
+    box.innerHTML = combined.map((m) => `
+        <button type="button" onclick="jumpFromGlobalSearch('${m.page}', '${m.date}')" class="w-full text-left p-2.5 hover:bg-stone-800/80 transition block">
+            <div class="font-mono font-bold text-amber-300 text-[11px]">${m.label}</div>
+            <div class="text-[11px] text-stone-300 truncate">${m.sub}</div>
+        </button>
+    `).join("");
+}
+
+window.jumpFromGlobalSearch = function (page, dateVal) {
+    if (dateVal) {
+        selectedDate = dateVal;
+        allDatesMode = false;
+        document.getElementById("pm-view-date").value = dateVal;
+        document.getElementById("all-dates-toggle-btn").textContent = "All Date: OFF";
+    }
+    setActiveView(page);
+};
+
+function renderCurrentView() {
+    updateBadges();
+    renderPresentPmTable();
+    renderPmHistoryTable();
+    renderPresentBreakdownTable();
+    renderAllBreakdownTable();
+    renderPhotosHistoryGallery();
+    renderGlobalSearchDropdown();
+}
+
+window.openPmModal = function (id) {
+    const item = toolsData.find((t) => t.id === id);
+    if (!item) return;
+    activeModalToolId = id;
+    draftBeforePhoto = item.beforePhoto || "";
+    draftAfterPhoto = item.afterPhoto || "";
+
+    document.getElementById("modal-mould-title").textContent = `${item.toolCode} (${item.scheduledDate || ""})`;
+    document.getElementById("modal-exchange-mould").value = item.exchangeMould || "";
+    document.getElementById("modal-postpond-mould").value = item.postpondMould || "";
+    document.getElementById("modal-remark-input").value = item.remarks || "";
+
+    const bpImg = document.getElementById("before-photo-preview");
+    const bpPh = document.getElementById("before-photo-placeholder");
+    if (draftBeforePhoto) {
+        bpImg.src = draftBeforePhoto;
+        bpImg.classList.remove("hidden");
+        bpPh.classList.add("hidden");
+    } else {
+        bpImg.classList.add("hidden");
+        bpPh.classList.remove("hidden");
+    }
+
+    const apImg = document.getElementById("after-photo-preview");
+    const apPh = document.getElementById("after-photo-placeholder");
+    if (draftAfterPhoto) {
+        apImg.src = draftAfterPhoto;
+        apImg.classList.remove("hidden");
+        apPh.classList.add("hidden");
+    } else {
+        apImg.classList.add("hidden");
+        apPh.classList.remove("hidden");
+    }
+
+    const modal = document.getElementById("photo-modal");
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+};
+
+function closePmModal() {
+    activeModalToolId = null;
+    const modal = document.getElementById("photo-modal");
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
+}
+
+async function savePmModal(markCompleted) {
+    if (!activeModalToolId) return;
+    const idx = toolsData.findIndex((t) => t.id === activeModalToolId);
+    if (idx === -1) return;
+
+    const remarksVal = document.getElementById("modal-remark-input").value.trim();
+    const updated = {
+        ...toolsData[idx],
+        beforePhoto: draftBeforePhoto,
+        afterPhoto: draftAfterPhoto,
+        exchangeMould: document.getElementById("modal-exchange-mould").value.trim().toUpperCase(),
+        postpondMould: document.getElementById("modal-postpond-mould").value.trim().toUpperCase(),
+        remarks: remarksVal,
+        status: markCompleted ? "PM Completed" : toolsData[idx].status
     };
-    allTools.push(item);
-    await putToStore(STORE_TOOLS, item);
-    writeLocalStorageMirror(allTools, allBreakdowns);
-    e.target.reset();
-    addPanel.classList.add("hidden");
-    selectCalendarDate(sched);
-    await refreshAll();
-    showToast(`Saved to ${sched}`);
-});
 
-document.getElementById("export-json-btn").addEventListener("click", () => {
-    const payload = {
-        system: "ToolSync PM",
-        exportedAt: new Date().toISOString(),
-        tools: allTools,
-        breakdowns: allBreakdowns
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `toolsync-pm-backup-${activeDate}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast("JSON backup exported");
-});
-
-document.getElementById("import-json-input").addEventListener("change", async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-        if (!Array.isArray(data.tools)) throw new Error("Invalid backup format");
-        await clearStore(STORE_TOOLS);
-        for (const t of data.tools) await putToStore(STORE_TOOLS, t);
-
-        if (Array.isArray(data.breakdowns)) {
-            await clearStore(STORE_BREAKDOWNS);
-            for (const b of data.breakdowns) await putToStore(STORE_BREAKDOWNS, b);
+    if (typeof savePmPhotoToBackup === "function") {
+        if (draftBeforePhoto) {
+            savePmPhotoToBackup({
+                toolCode: updated.toolCode,
+                date: updated.scheduledDate,
+                stage: "BEFORE PM",
+                dataUrl: draftBeforePhoto,
+                remarks: remarksVal
+            });
         }
-
-        writeLocalStorageMirror(data.tools, Array.isArray(data.breakdowns) ? data.breakdowns : allBreakdowns);
-        await refreshAll();
-        showToast("Backup restored");
-    } catch {
-        showToast("Invalid JSON backup");
+        if (draftAfterPhoto) {
+            savePmPhotoToBackup({
+                toolCode: updated.toolCode,
+                date: updated.scheduledDate,
+                stage: "AFTER PM",
+                dataUrl: draftAfterPhoto,
+                remarks: remarksVal
+            });
+        }
     }
-    e.target.value = "";
-});
 
-document.getElementById("export-csv-btn").addEventListener("click", () => {
-    const headers = [
-        "Scheduled Date",
-        "Original Date",
-        "Tool ID (Planned)",
-        "Mold Name (Planned)",
-        "Exchange Mold",
-        "Machine",
-        "Status",
-        "Before Photo",
-        "After Photo",
-        "Remarks"
-    ];
-    const rows = allTools.map((t) => [
-        t.scheduledDate,
-        t.originalDate || t.scheduledDate,
-        t.toolCode,
-        `"${(t.moldName || "").replace(/"/g, '""')}"`,
-        `"${(t.actualMold || "").replace(/"/g, '""')}"`,
-        t.machineNo,
-        t.status,
-        t.beforePhoto ? "Yes" : "No",
-        t.afterPhoto ? "Yes" : "No",
-        `"${(t.remarks || "").replace(/"/g, '""')}"`
-    ]);
+    toolsData[idx] = updated;
+    await putToStore(STORE_TOOLS, updated);
+    writeLocalStorageMirror(toolsData, breakdownsData);
+    closePmModal();
+    renderCurrentView();
+    showToast(markCompleted ? "PM marked completed" : "PM details saved");
+}
 
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `toolsync-pm-plan-${activeDate}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast("CSV exported");
-});
+window.deleteBreakdown = async function (id) {
+    breakdownsData = breakdownsData.filter((b) => b.id !== id);
+    await deleteByIdFromStore(STORE_BREAKDOWNS, id);
+    writeLocalStorageMirror(toolsData, breakdownsData);
+    renderCurrentView();
+    showToast("Breakdown deleted");
+};
 
-(async function init() {
-    await runOneTimeCleanSlate();
-    await refreshAll();
-    switchPageView("pm-plan");
-})();
+async function initApp() {
+    const loaded = await loadAllAppData();
+    toolsData = loaded.tools;
+    breakdownsData = loaded.breakdowns;
+    if (typeof syncToolsPhotosToBackup === "function") {
+        syncToolsPhotosToBackup(toolsData);
+    }
+
+    document.getElementById("pm-date-input").value = TODAY_ISO;
+    document.getElementById("pm-view-date").value = TODAY_ISO;
+    document.getElementById("bd-entry-date").value = TODAY_ISO;
+    document.getElementById("plan-start-date").value = `${PRESENT_MONTH_PREFIX}-01`;
+
+    document.querySelectorAll(".nav-item").forEach((btn) => {
+        btn.addEventListener("click", () => setActiveView(btn.dataset.view));
+    });
+
+    document.getElementById("toggle-sidebar-btn").addEventListener("click", () => {
+        const sb = document.getElementById("left-sidebar");
+        const main = document.getElementById("right-main-content");
+        sb.classList.toggle("hidden");
+        main.classList.toggle("lg:col-span-9");
+        main.classList.toggle("lg:col-span-12");
+    });
+
+    document.getElementById("top-today-btn").addEventListener("click", () => {
+        selectedDate = TODAY_ISO;
+        allDatesMode = false;
+        document.getElementById("pm-view-date").value = TODAY_ISO;
+        document.getElementById("all-dates-toggle-btn").textContent = "All Date: OFF";
+        renderCurrentView();
+    });
+
+    document.getElementById("pm-view-date").addEventListener("change", (e) => {
+        selectedDate = e.target.value || TODAY_ISO;
+        allDatesMode = false;
+        document.getElementById("all-dates-toggle-btn").textContent = "All Date: OFF";
+        renderCurrentView();
+    });
+
+    document.getElementById("pm-show-all-dates-btn").addEventListener("click", () => {
+        allDatesMode = true;
+        document.getElementById("global-date-search").value = "";
+        document.getElementById("all-dates-toggle-btn").textContent = "All Date: ON";
+        renderCurrentView();
+    });
+
+    document.getElementById("all-dates-toggle-btn").addEventListener("click", (e) => {
+        allDatesMode = !allDatesMode;
+        e.target.textContent = allDatesMode ? "All Date: ON" : "All Date: OFF";
+        renderCurrentView();
+    });
+
+    document.getElementById("global-mould-search").addEventListener("input", renderCurrentView);
+    document.getElementById("global-date-search").addEventListener("change", renderCurrentView);
+    document.getElementById("clear-global-search-btn").addEventListener("click", () => {
+        document.getElementById("global-mould-search").value = "";
+        document.getElementById("global-date-search").value = "";
+        document.getElementById("all-bd-date-filter").value = "";
+        document.getElementById("pm-hist-date-filter").value = "";
+        allDatesMode = true;
+        document.getElementById("all-dates-toggle-btn").textContent = "All Date: ON";
+        renderCurrentView();
+    });
+
+    document.getElementById("pm-hist-date-filter").addEventListener("change", (e) => {
+        pmHistAllDates = !e.target.value;
+        renderPmHistoryTable();
+    });
+    document.getElementById("pm-hist-all-btn").addEventListener("click", () => {
+        pmHistAllDates = true;
+        document.getElementById("pm-hist-date-filter").value = "";
+        renderPmHistoryTable();
+    });
+
+    document.getElementById("present-bd-all-month-btn").addEventListener("click", () => {
+        presentBdAllMonth = !presentBdAllMonth;
+        renderPresentBreakdownTable();
+    });
+
+    document.getElementById("all-bd-date-filter").addEventListener("change", renderAllBreakdownTable);
+    document.getElementById("all-bd-clear-date-btn").addEventListener("click", () => {
+        document.getElementById("all-bd-date-filter").value = "";
+        renderAllBreakdownTable();
+    });
+
+    document.getElementById("open-add-pm-btn").addEventListener("click", () => {
+        document.getElementById("add-pm-panel").classList.toggle("hidden");
+    });
+    document.getElementById("close-add-pm-btn").addEventListener("click", () => {
+        document.getElementById("add-pm-panel").classList.add("hidden");
+    });
+
+    document.getElementById("add-pm-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const newTool = {
+            id: `pm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            scheduledDate: document.getElementById("pm-date-input").value || TODAY_ISO,
+            toolCode: document.getElementById("pm-mould-no-input").value.trim().toUpperCase(),
+            exchangeMould: document.getElementById("pm-exchange-input").value.trim().toUpperCase(),
+            postpondMould: document.getElementById("pm-postpond-input").value.trim().toUpperCase(),
+            remarks: document.getElementById("pm-remark-input").value.trim(),
+            status: "Scheduled",
+            beforePhoto: "",
+            afterPhoto: ""
+        };
+        toolsData.push(newTool);
+        await putToStore(STORE_TOOLS, newTool);
+        writeLocalStorageMirror(toolsData, breakdownsData);
+        e.target.reset();
+        document.getElementById("pm-date-input").value = TODAY_ISO;
+        renderCurrentView();
+        showToast("PM mould added");
+    });
+
+    document.getElementById("open-add-bd-top-btn").addEventListener("click", () => {
+        document.getElementById("add-bd-panel").classList.toggle("hidden");
+    });
+    document.getElementById("close-add-bd-btn").addEventListener("click", () => {
+        document.getElementById("add-bd-panel").classList.add("hidden");
+    });
+
+    document.getElementById("add-bd-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const newBd = {
+            id: `bd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            date: document.getElementById("bd-entry-date").value || TODAY_ISO,
+            toolCode: document.getElementById("bd-entry-mould").value.trim().toUpperCase(),
+            bdStatus: document.getElementById("bd-entry-status").value.trim(),
+            issue: document.getElementById("bd-entry-problem").value.trim(),
+            machineNo: document.getElementById("bd-entry-mc").value.trim().toUpperCase(),
+            remarks: document.getElementById("bd-entry-remark").value.trim()
+        };
+        breakdownsData.push(newBd);
+        await putToStore(STORE_BREAKDOWNS, newBd);
+        writeLocalStorageMirror(toolsData, breakdownsData);
+        e.target.reset();
+        document.getElementById("bd-entry-date").value = TODAY_ISO;
+        renderCurrentView();
+        showToast("Breakdown saved");
+    });
+
+    document.getElementById("before-photo-input").addEventListener("change", async (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        draftBeforePhoto = await compressImageFile(f);
+        const img = document.getElementById("before-photo-preview");
+        img.src = draftBeforePhoto;
+        img.classList.remove("hidden");
+        document.getElementById("before-photo-placeholder").classList.add("hidden");
+    });
+
+    document.getElementById("after-photo-input").addEventListener("change", async (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        draftAfterPhoto = await compressImageFile(f);
+        const img = document.getElementById("after-photo-preview");
+        img.src = draftAfterPhoto;
+        img.classList.remove("hidden");
+        document.getElementById("after-photo-placeholder").classList.add("hidden");
+    });
+
+    document.getElementById("close-photo-modal-btn").addEventListener("click", closePmModal);
+    document.getElementById("save-pm-only-btn").addEventListener("click", () => savePmModal(false));
+    document.getElementById("mark-pm-done-btn").addEventListener("click", () => savePmModal(true));
+    document.getElementById("delete-pm-record-btn").addEventListener("click", async () => {
+        if (!activeModalToolId) return;
+        toolsData = toolsData.filter((t) => t.id !== activeModalToolId);
+        await deleteByIdFromStore(STORE_TOOLS, activeModalToolId);
+        writeLocalStorageMirror(toolsData, breakdownsData);
+        closePmModal();
+        renderCurrentView();
+        showToast("PM record deleted");
+    });
+
+    // Photo to Text OCR
+    document.getElementById("open-ocr-modal-btn").addEventListener("click", () => {
+        document.getElementById("ocr-modal").classList.remove("hidden");
+        document.getElementById("ocr-modal").classList.add("flex");
+    });
+    document.getElementById("close-ocr-modal-btn").addEventListener("click", () => {
+        document.getElementById("ocr-modal").classList.add("hidden");
+        document.getElementById("ocr-modal").classList.remove("flex");
+    });
+
+    document.getElementById("plan-photo-input").addEventListener("change", async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !window.Tesseract) return;
+        document.getElementById("ocr-status-line").textContent = "Scanning photo...";
+        const { data } = await window.Tesseract.recognize(file, "eng");
+        const tokens = (data.text || "").match(/[A-Z]{1,5}[-_ ]?\d{1,4}(?:[-_ ]?[A-Z0-9]+)?/gi) || [];
+        const unique = [...new Set(tokens.map((x) => x.trim().toUpperCase()))];
+        const startIso = document.getElementById("plan-start-date").value || `${PRESENT_MONTH_PREFIX}-01`;
+        const lines = [];
+        for (let i = 0; i < unique.length; i += 3) {
+            const d = addDaysISO(startIso, Math.floor(i / 3));
+            lines.push(`${d} | ${unique.slice(i, i + 3).join(", ")}`);
+        }
+        document.getElementById("datewise-text-output").value = lines.join("\n");
+        document.getElementById("ocr-status-line").textContent = `Detected ${unique.length} mould codes`;
+    });
+
+    document.getElementById("auto-map-3-btn").addEventListener("click", () => {
+        const raw = document.getElementById("datewise-text-output").value;
+        const codes = raw.replace(/\d{4}-\d{2}-\d{2}\s*\|/g, "").split(/[\n,]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+        const startIso = document.getElementById("plan-start-date").value || `${PRESENT_MONTH_PREFIX}-01`;
+        const lines = [];
+        for (let i = 0; i < codes.length; i += 3) {
+            lines.push(`${addDaysISO(startIso, Math.floor(i / 3))} | ${codes.slice(i, i + 3).join(", ")}`);
+        }
+        document.getElementById("datewise-text-output").value = lines.join("\n");
+    });
+
+    document.getElementById("import-ocr-schedule-btn").addEventListener("click", async () => {
+        const lines = document.getElementById("datewise-text-output").value.split("\n").map((l) => l.trim()).filter(Boolean);
+        for (const line of lines) {
+            const parts = line.split("|");
+            if (parts.length < 2) continue;
+            const d = parts[0].trim();
+            const molds = parts[1].split(",").map((m) => m.trim().toUpperCase()).filter(Boolean);
+            for (const mCode of molds) {
+                const rec = {
+                    id: `pm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    scheduledDate: d,
+                    toolCode: mCode,
+                    exchangeMould: "",
+                    postpondMould: "",
+                    remarks: "Imported via Photo to Text",
+                    status: "Scheduled",
+                    beforePhoto: "",
+                    afterPhoto: ""
+                };
+                toolsData.push(rec);
+                await putToStore(STORE_TOOLS, rec);
+            }
+        }
+        writeLocalStorageMirror(toolsData, breakdownsData);
+        document.getElementById("ocr-modal").classList.add("hidden");
+        document.getElementById("ocr-modal").classList.remove("flex");
+        setActiveView("present-pm");
+        showToast("Schedule saved to PM Plan");
+    });
+
+    // Settings Export / Import / Reset
+    document.getElementById("export-json-btn").addEventListener("click", () => {
+        const payload = {
+            tools: toolsData,
+            breakdowns: breakdownsData,
+            photoBackup: getAllSavedPhotos()
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `toolsync-backup-${TODAY_ISO}.json`;
+        a.click();
+    });
+
+    document.getElementById("import-json-input").addEventListener("change", async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed.tools)) toolsData = parsed.tools;
+        if (Array.isArray(parsed.breakdowns)) breakdownsData = parsed.breakdowns;
+        await safeClearStore(STORE_TOOLS);
+        await safeClearStore(STORE_BREAKDOWNS);
+        for (const t of toolsData) await putToStore(STORE_TOOLS, t);
+        for (const b of breakdownsData) await putToStore(STORE_BREAKDOWNS, b);
+        if (Array.isArray(parsed.photoBackup) && typeof writePhotoBackupStore === "function") {
+            writePhotoBackupStore(parsed.photoBackup);
+        }
+        if (typeof syncToolsPhotosToBackup === "function") {
+            syncToolsPhotosToBackup(toolsData);
+        }
+        writeLocalStorageMirror(toolsData, breakdownsData);
+        renderCurrentView();
+        showToast("Backup imported");
+    });
+
+    document.getElementById("export-csv-btn").addEventListener("click", () => {
+        const header = "Type,Date,MouldNo,MachineNo,Status,ProblemOrRemark\n";
+        const pmLines = toolsData.map((t) => `PM,${t.scheduledDate || ""},${t.toolCode || ""},,${t.status || ""},"${(t.remarks || "").replace(/"/g, '""')}"`);
+        const bdLines = breakdownsData.map((b) => `Breakdown,${b.date || ""},${b.toolCode || ""},${b.machineNo || ""},${b.bdStatus || ""},"${(b.issue || "").replace(/"/g, '""')}"`);
+        const blob = new Blob([header + [...pmLines, ...bdLines].join("\n")], { type: "text/csv" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `toolsync-report-${TODAY_ISO}.csv`;
+        a.click();
+    });
+
+    document.getElementById("clear-all-data-btn").addEventListener("click", async () => {
+        toolsData = [];
+        breakdownsData = [];
+        await safeClearStore(STORE_TOOLS);
+        await safeClearStore(STORE_BREAKDOWNS);
+        if (typeof writePhotoBackupStore === "function") {
+            writePhotoBackupStore([]);
+        }
+        writeLocalStorageMirror([], []);
+        renderCurrentView();
+        showToast("All records cleared");
+    });
+
+    setActiveView("present-pm");
+}
+
+initApp();

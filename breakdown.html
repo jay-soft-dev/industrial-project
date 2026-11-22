@@ -9,6 +9,7 @@
         tailwind.config = { darkMode: "class", theme: { extend: { fontFamily: { sans: ["Space Grotesk", "sans-serif"], mono: ["JetBrains Mono", "monospace"] } } } };
     </script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
 </head>
 <body class="bg-[#0b0d11] text-stone-100 min-h-screen antialiased">
     <header class="sticky top-0 z-30 border-b border-stone-800 bg-[#0b0d11]/95 backdrop-blur px-4 sm:px-6 py-3 flex items-center justify-between gap-2">
@@ -22,19 +23,20 @@
     </header>
 
     <div id="page-shell" class="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        <aside id="slide-menu-aside" class="lg:col-span-3 rounded-2xl border border-stone-800 bg-[#11151d] p-2.5 space-y-1.5"></aside>
+        <aside id="slide-menu-aside" class="lg:col-span-3 rounded-2xl border border-stone-800 bg-[#11151d] p-2.5 space-y-2"></aside>
 
         <main class="lg:col-span-9 space-y-4">
             <section class="rounded-2xl bg-[#11151d] border border-rose-500/40 p-4 space-y-3">
                 <h2 class="text-xs font-mono uppercase text-rose-300 font-bold">Enter Data</h2>
-                <form id="bd-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
+                <form id="bd-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2.5">
                     <input id="bd-date" type="date" required class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono text-rose-300" />
-                    <input id="bd-mould" type="text" required placeholder="Breakdown Mould Num" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
-                    <input id="bd-reason" type="text" required placeholder="Reason" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs" />
-                    <input id="bd-status" type="text" required placeholder="Status" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
-                    <input id="bd-mc" type="text" required placeholder="M/C No" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                    <input id="bd-mould" type="text" required placeholder="MOULD NO" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                    <input id="bd-reason" type="text" required placeholder="PROBLEM" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs" />
+                    <input id="bd-status" type="text" required placeholder="STATUS" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                    <input id="bd-mc" type="text" required placeholder="M.C NO" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                    <input id="bd-remark" type="text" placeholder="REMARK" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs" />
                     <div class="flex gap-1.5">
-                        <input id="bd-time" type="text" required placeholder="Time" class="w-full min-w-0 bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                        <input id="bd-time" type="text" required placeholder="TIME" class="w-full min-w-0 bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
                         <button type="submit" class="bg-rose-500 hover:bg-rose-400 text-white font-mono font-bold text-xs rounded-lg px-3 py-2 shrink-0">Save</button>
                     </div>
                 </form>

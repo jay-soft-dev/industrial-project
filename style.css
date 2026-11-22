@@ -51,17 +51,25 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 /* Slide menu & workspace transitions */
-#slide-menu-panel {
+#slide-menu-panel,
+#slide-menu-aside,
+#left-sidebar {
     transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-.slide-page-btn {
+.slide-page-btn,
+.nav-item {
     user-select: none;
 }
 
 /* Table & card subtle hover elevation */
 tbody tr {
     transition: background-color 0.15s ease;
+}
+
+table th,
+table td {
+    vertical-align: middle;
 }
 
 article {
@@ -75,7 +83,8 @@ article:hover {
 /* Modal backdrop smooth appearance */
 #edit-tool-modal:not(.hidden),
 #photo-modal:not(.hidden),
-#ocr-modal:not(.hidden) {
+#ocr-modal:not(.hidden),
+#pic-view-modal:not(.hidden) {
     animation: modalFadeIn 0.16s ease-out;
 }
 
@@ -94,7 +103,11 @@ article:hover {
 @media print {
     header,
     #slide-menu-panel,
+    #slide-menu-aside,
+    #left-sidebar,
     #add-tool-panel,
+    #add-pm-panel,
+    #add-bd-panel,
     #toast {
         display: none !important;
     }

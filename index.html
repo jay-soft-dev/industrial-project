@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ToolSync PM — Injection Mold Preventive Maintenance & Breakdown</title>
+    <title>ToolSync PM — Main Page Format</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script>
@@ -19,714 +19,355 @@
             }
         };
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body class="bg-[#0b0d11] text-stone-100 min-h-screen antialiased selection:bg-amber-400 selection:text-stone-950">
     <!-- Top Bar -->
-    <header class="sticky top-0 z-30 border-b border-stone-800/90 bg-[#0b0d11]/95 backdrop-blur-md">
-        <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+    <header class="sticky top-0 z-30 border-b border-stone-800 bg-[#0b0d11]/95 backdrop-blur">
+        <div class="max-w-[1520px] mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
-                <button
-                    id="toggle-slide-menu-btn"
-                    type="button"
-                    aria-expanded="true"
-                    class="px-3 py-2 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-amber-400/50 text-amber-300 font-mono text-xs font-bold flex items-center gap-2 transition"
-                >
-                    <span>&#9776;</span>
-                    <span>Slide Menu</span>
+                <button id="toggle-sidebar-btn" type="button" class="px-3 py-1.5 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-amber-400/50 text-amber-300 font-mono text-xs font-bold">
+                    &#9776; Menu
                 </button>
-                <div class="w-9 h-9 rounded-lg bg-amber-400 text-stone-950 font-mono font-bold flex items-center justify-center text-sm shadow-sm">
+                <div class="w-8 h-8 rounded-lg bg-amber-400 text-stone-950 font-mono font-bold flex items-center justify-center text-xs">
                     PM
                 </div>
                 <div>
                     <div class="flex items-center gap-2">
-                        <h1 class="text-base sm:text-lg font-bold tracking-tight">ToolSync PM</h1>
-                        <span id="header-active-date-pill" class="text-[11px] font-mono px-2 py-0.5 rounded bg-stone-800 text-amber-300 border border-stone-700">
-                            --
-                        </span>
+                        <h1 id="top-page-title" class="text-sm sm:text-base font-bold">Main Page Format</h1>
+                        <span id="active-date-badge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-stone-800 text-amber-300 border border-stone-700">--</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Quick Actions & Photo-to-Text -->
             <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
-                <button
-                    id="jump-today-btn"
-                    type="button"
-                    class="px-3 py-1.5 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-stone-700 transition"
-                >
+                <button id="top-today-btn" type="button" class="px-3 py-1.5 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-stone-700">
                     Today
                 </button>
-                <button
-                    id="open-ocr-modal-btn"
-                    type="button"
-                    class="px-3 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 font-semibold transition"
-                >
+                <button id="open-ocr-modal-btn" type="button" class="px-3 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 font-semibold">
                     Photo to Text
                 </button>
-                <button
-                    id="open-add-tool-btn"
-                    type="button"
-                    class="px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold transition"
-                >
+                <button id="open-add-pm-btn" type="button" class="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold">
                     + Add PM Plan
                 </button>
-                <button
-                    id="export-json-btn"
-                    type="button"
-                    class="px-3 py-1.5 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-stone-700 transition"
-                >
-                    Export
-                </button>
-                <label class="px-3 py-1.5 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-stone-700 cursor-pointer transition">
-                    Import
-                    <input id="import-json-input" type="file" accept="application/json" class="hidden" />
-                </label>
-                <button
-                    id="export-csv-btn"
-                    type="button"
-                    class="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-semibold transition"
-                >
-                    CSV
+                <button id="open-add-bd-top-btn" type="button" class="px-3 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-bold">
+                    + Breakdown
                 </button>
             </div>
         </div>
     </header>
 
-    <!-- Main Sketch Workspace: Left Slide Menu + Right Main Workspace -->
-    <div id="workspace-shell" class="max-w-[1440px] mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        <!-- LEFT SLIDE MENU (Matches Sketch Left Panel) -->
-        <aside id="slide-menu-panel" class="lg:col-span-4 xl:col-span-3 rounded-2xl border-2 border-stone-700/90 bg-[#11151d] overflow-hidden divide-y-2 divide-stone-800 shadow-xl">
-            <!-- 1. Running Month PM Plan -->
-            <div class="p-4 space-y-3">
-                <div class="flex items-center justify-between gap-2">
-                    <div>
-                        <span class="text-[10px] font-mono uppercase tracking-wider text-amber-400">Slide Menu • 01</span>
-                        <h2 id="menu-running-month-title" class="text-sm font-bold text-white">Running Month PM Plan</h2>
-                    </div>
-                    <button
-                        id="menu-switch-all-month-btn"
-                        type="button"
-                        class="px-2.5 py-1 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 font-mono text-[11px] font-semibold transition"
-                    >
-                        All Month Slide
-                    </button>
-                </div>
+    <!-- Main Page Format Shell: Left Sidebar + Right Main Content -->
+    <div id="main-layout-shell" class="max-w-[1520px] mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+        <!-- LEFT SIDEBAR (Matches main page fomat.jpg + All Pages Search) -->
+        <aside id="left-sidebar" class="lg:col-span-3 rounded-2xl border-2 border-stone-700 bg-[#11151d] overflow-hidden divide-y divide-stone-800 shadow-xl">
+            <nav id="sidebar-nav" class="p-2.5 space-y-1.5 text-xs font-mono">
+                <button type="button" data-view="present-pm" class="nav-item w-full text-left px-3 py-2.5 rounded-xl border font-semibold transition flex items-center justify-between">
+                    <span>present month pm plan</span>
+                    <span id="badge-present-pm" class="px-1.5 py-0.5 rounded bg-stone-800 text-[10px]">0</span>
+                </button>
+                <button type="button" data-view="pm-history" class="nav-item w-full text-left px-3 py-2.5 rounded-xl border font-semibold transition flex items-center justify-between">
+                    <span>all pm plan history</span>
+                    <span id="badge-pm-history" class="px-1.5 py-0.5 rounded bg-stone-800 text-[10px]">0</span>
+                </button>
+                <button type="button" data-view="present-breakdown" class="nav-item w-full text-left px-3 py-2.5 rounded-xl border font-semibold transition flex items-center justify-between">
+                    <span>present month breck down</span>
+                    <span id="badge-present-bd" class="px-1.5 py-0.5 rounded bg-stone-800 text-[10px]">0</span>
+                </button>
+                <button type="button" data-view="breakdown-history" class="nav-item w-full text-left px-3 py-2.5 rounded-xl border font-semibold transition flex items-center justify-between">
+                    <span>breck down history</span>
+                    <span id="badge-all-bd" class="px-1.5 py-0.5 rounded bg-stone-800 text-[10px]">0</span>
+                </button>
+                <button type="button" data-view="photos-history" class="nav-item w-full text-left px-3 py-2.5 rounded-xl border font-semibold transition flex items-center justify-between">
+                    <span>all pm mould photos history</span>
+                    <span id="badge-photos" class="px-1.5 py-0.5 rounded bg-stone-800 text-[10px]">0</span>
+                </button>
+                <button type="button" data-view="settings" class="nav-item w-full text-left px-3 py-2.5 rounded-xl border font-semibold transition flex items-center justify-between">
+                    <span>setting</span>
+                    <span class="text-[10px] text-stone-400">&#9881;</span>
+                </button>
+            </nav>
 
-                <!-- Search Row Inside Menu -->
-                <div class="space-y-2 text-xs font-mono">
-                    <div class="flex items-center bg-[#0b0d11] border border-emerald-400/40 rounded-lg px-2.5 py-1.5">
-                        <label for="header-month-search" class="text-emerald-300 mr-2 font-bold shrink-0">MONTH</label>
-                        <input
-                            id="header-month-search"
-                            type="text"
-                            autocomplete="off"
-                            placeholder="Nov, 2026-11..."
-                            class="w-full bg-transparent text-white placeholder-stone-500 focus:outline-none"
-                        />
-                        <button id="clear-month-search-btn" type="button" class="hidden ml-1 text-emerald-300">&times;</button>
-                    </div>
-
-                    <div class="flex items-center bg-[#0b0d11] border border-sky-400/40 rounded-lg px-2.5 py-1.5 gap-1.5">
-                        <label for="header-date-search" class="text-sky-300 font-bold shrink-0">DATE</label>
-                        <input
-                            id="header-date-search"
-                            type="text"
-                            autocomplete="off"
-                            placeholder="YYYY-MM-DD"
-                            class="w-full min-w-0 bg-transparent text-amber-300 placeholder-stone-500 focus:outline-none"
-                        />
-                        <input
-                            id="selected-date"
-                            type="date"
-                            aria-label="Pick calendar date"
-                            class="bg-[#11151d] border border-stone-700 rounded px-1 py-0.5 text-[11px] text-amber-300 focus:outline-none shrink-0"
-                        />
-                        <button id="clear-date-search-btn" type="button" class="hidden text-sky-300">&times;</button>
-                    </div>
-
-                    <div class="relative flex items-center bg-[#0b0d11] border border-amber-400/50 rounded-lg px-2.5 py-1.5">
-                        <label for="header-mold-search" class="text-amber-300 mr-2 font-bold shrink-0">MOLD</label>
-                        <input
-                            id="header-mold-search"
-                            type="text"
-                            autocomplete="off"
-                            placeholder="Search all 12 months..."
-                            class="w-full bg-transparent text-white placeholder-stone-500 focus:outline-none"
-                        />
-                        <button id="clear-mold-search-btn" type="button" class="hidden ml-1 text-amber-300">&times;</button>
-
-                        <div
-                            id="mold-search-results"
-                            class="hidden fixed sm:absolute left-3 right-3 sm:left-0 sm:right-auto top-16 sm:top-full sm:mt-1.5 z-50 w-auto sm:w-[390px] max-h-72 overflow-y-auto rounded-xl bg-[#11151d] border border-amber-400/60 shadow-2xl divide-y divide-stone-800/80"
-                        ></div>
-                    </div>
-                </div>
-
-                <!-- Running Month PM List with Edit & Delete -->
-                <div id="menu-running-pm-list" class="max-h-48 overflow-y-auto space-y-1.5 pr-1"></div>
-            </div>
-
-            <!-- 2. PM Done Mould History -->
-            <div class="p-4 space-y-2.5">
+            <!-- Side Search Option Across ALL Pages (Mould No / Date / Problem / Status) -->
+            <div class="p-3 space-y-2.5 bg-[#0d1118]">
                 <div class="flex items-center justify-between">
-                    <div>
-                        <span class="text-[10px] font-mono uppercase tracking-wider text-emerald-400">Slide Menu • 02</span>
-                        <h2 class="text-sm font-bold text-white">PM Done Mould History</h2>
-                    </div>
-                    <span id="menu-pm-done-count" class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-mono text-[11px]">0</span>
-                </div>
-                <div id="menu-pm-done-list" class="max-h-44 overflow-y-auto space-y-1.5 pr-1"></div>
-            </div>
-
-            <!-- 3. Breakdown Mould History + 12-Month Auto Calendar + Enter Data + Present Month Breakdown -->
-            <div class="p-4 space-y-3">
-                <div class="flex items-center justify-between gap-2">
-                    <div>
-                        <span class="text-[10px] font-mono uppercase tracking-wider text-rose-400">Slide Menu • 03</span>
-                        <h2 class="text-sm font-bold text-white">Breakdown Mould History</h2>
-                    </div>
-                    <button
-                        id="open-breakdown-entry-btn"
-                        type="button"
-                        class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 font-mono text-[11px] font-bold transition"
-                    >
-                        + Enter Data
+                    <span class="text-[10px] font-mono uppercase tracking-wider text-amber-300 font-bold">
+                        Search All Pages (Mould / Date)
+                    </span>
+                    <button id="clear-global-search-btn" type="button" class="text-[10px] font-mono text-rose-300 hover:underline">
+                        Clear
                     </button>
                 </div>
 
-                <!-- Present Month Breakdown Data Box -->
-                <div class="rounded-xl border border-rose-500/30 bg-[#0b0d11] p-3 space-y-1.5">
-                    <div class="flex items-center justify-between text-[11px] font-mono">
-                        <span id="present-month-bd-label" class="text-rose-300 font-bold">Present Month Breakdown Data</span>
-                        <span id="present-month-bd-count" class="text-stone-300">0</span>
-                    </div>
-                    <div id="present-month-bd-summary" class="text-xs text-stone-300">
-                        No breakdown data entered for present month yet.
-                    </div>
+                <input
+                    id="global-mould-search"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Mould No / Problem / Status..."
+                    class="w-full bg-[#0b0d11] border border-amber-400/50 rounded-lg px-2.5 py-2 text-xs font-mono text-white placeholder-stone-500 focus:border-amber-400 focus:outline-none"
+                />
+
+                <div class="grid grid-cols-2 gap-1.5">
+                    <input
+                        id="global-date-search"
+                        type="date"
+                        aria-label="Search Date across all pages"
+                        class="w-full bg-[#0b0d11] border border-sky-400/40 rounded-lg px-2 py-1.5 text-[11px] font-mono text-amber-300 focus:border-sky-400 focus:outline-none"
+                    />
+                    <button
+                        id="all-dates-toggle-btn"
+                        type="button"
+                        class="px-2 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-mono text-[11px] font-bold"
+                    >
+                        All Date: ON
+                    </button>
                 </div>
 
-                <!-- 12-Month Auto Calendar (Persists All Months Data) -->
-                <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-3 space-y-2">
-                    <div class="flex items-center justify-between gap-1">
-                        <span class="text-[11px] font-mono uppercase text-amber-300 font-bold">12-Month Auto Calendar</span>
-                        <div class="flex items-center gap-1">
-                            <button
-                                id="bd-cal-prev-btn"
-                                type="button"
-                                class="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-[11px] font-mono"
-                            >
-                                &lsaquo;
-                            </button>
-                            <span id="bd-cal-month-label" class="text-[11px] font-mono text-stone-200 px-1"></span>
-                            <button
-                                id="bd-cal-next-btn"
-                                type="button"
-                                class="px-1.5 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-[11px] font-mono"
-                            >
-                                &rsaquo;
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- 12 Month Pills (All Months Saved) -->
-                    <div id="bd-twelve-month-pills" class="flex items-center gap-1 overflow-x-auto pb-1 text-[10px] font-mono"></div>
-
-                    <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-mono text-stone-500">
-                        <div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div>
-                    </div>
-                    <div id="bd-calendar-grid" class="grid grid-cols-7 gap-1"></div>
-                </div>
-
-                <!-- Breakdown History List (Edit / Delete) -->
-                <div id="menu-breakdown-history-list" class="max-h-52 overflow-y-auto space-y-1.5 pr-1"></div>
+                <div id="global-search-results" class="hidden max-h-64 overflow-y-auto rounded-xl border border-amber-400/40 bg-[#11151d] divide-y divide-stone-800 text-xs"></div>
             </div>
         </aside>
 
-        <!-- RIGHT MAIN CONTENT AREA (Matches Sketch Right Panel) -->
-        <main class="lg:col-span-8 xl:col-span-9 space-y-5">
-            <!-- Active All-Months Mold Search Results Card -->
-            <section
-                id="active-search-banner"
-                class="hidden rounded-2xl border border-amber-400/50 bg-[#141822] p-4 space-y-3"
-            >
-                <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
-                    <div id="active-search-text" class="text-amber-200 font-semibold"></div>
-                    <button
-                        id="reset-all-search-btn"
-                        type="button"
-                        class="px-3 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-600 text-stone-100 transition"
-                    >
-                        Clear Search
-                    </button>
-                </div>
-                <div id="search-matches-inline-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5"></div>
-            </section>
-
-            <!-- Summary Strip -->
-            <section class="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
-                <div class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4">
-                    <div class="text-[11px] font-mono uppercase text-stone-400">Selected Date PM</div>
-                    <div id="stat-day-count" class="mt-1 text-2xl font-bold font-mono text-amber-400">0 / 3</div>
-                    <div class="mt-0.5 text-[11px] text-stone-400">Target: 3 molds/day</div>
-                </div>
-
-                <div class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4">
-                    <div class="text-[11px] font-mono uppercase text-stone-400">Swapped / Rescheduled</div>
-                    <div id="stat-swapped-count" class="mt-1 text-2xl font-bold font-mono text-sky-400">0</div>
-                    <div class="mt-0.5 text-[11px] text-stone-400">Running machine shifts</div>
-                </div>
-
-                <div class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4">
-                    <div class="text-[11px] font-mono uppercase text-stone-400">Scheduled This Month</div>
-                    <div id="stat-month-tools" class="mt-1 text-2xl font-bold font-mono text-emerald-400">0</div>
-                    <div class="mt-0.5 text-[11px] text-stone-400">Saved in browser</div>
-                </div>
-
-                <div class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4">
-                    <div class="text-[11px] font-mono uppercase text-stone-400">Present Month Breakdown</div>
-                    <div id="stat-month-breakdowns" class="mt-1 text-2xl font-bold font-mono text-rose-400">0</div>
-                    <div class="mt-0.5 text-[11px] text-stone-400">12-month history saved</div>
-                </div>
-            </section>
-
-            <!-- Breakdown Data Entry Panel (Collapsible) -->
-            <section id="breakdown-entry-panel" class="hidden rounded-2xl bg-[#11151d] border border-rose-500/40 p-5 space-y-4">
+        <!-- RIGHT MAIN CONTENT AREA -->
+        <main id="right-main-content" class="lg:col-span-9 space-y-4">
+            <!-- Collapsible Add PM Plan Form -->
+            <section id="add-pm-panel" class="hidden rounded-2xl bg-[#11151d] border border-amber-400/40 p-4 space-y-3">
                 <div class="flex items-center justify-between">
-                    <div>
-                        <span class="text-[10px] font-mono uppercase text-rose-400">Breakdown Data Entry</span>
-                        <h2 id="breakdown-form-heading" class="text-base font-bold text-white">Enter Breakdown Data</h2>
-                    </div>
-                    <button
-                        id="close-breakdown-panel-btn"
-                        type="button"
-                        class="text-xs font-mono text-stone-400 hover:text-white"
-                    >
-                        Close [X]
-                    </button>
+                    <h2 class="text-sm font-bold text-amber-300 font-mono uppercase">Add Mould to PM Plan</h2>
+                    <button type="button" id="close-add-pm-btn" class="text-xs font-mono text-stone-400 hover:text-white">Close [X]</button>
                 </div>
-
-                <form id="breakdown-data-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                    <input
-                        id="bd-date-input"
-                        type="date"
-                        name="bdDate"
-                        required
-                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono text-rose-300 focus:border-rose-400 focus:outline-none"
-                    />
-                    <input
-                        id="bd-tool-code-input"
-                        type="text"
-                        name="toolCode"
-                        required
-                        placeholder="Tool / Mould ID (e.g. IM-108)"
-                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-rose-400 focus:outline-none"
-                    />
-                    <input
-                        id="bd-machine-no-input"
-                        type="text"
-                        name="machineNo"
-                        required
-                        placeholder="Machine No (e.g. IMM-04)"
-                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-rose-400 focus:outline-none"
-                    />
-                    <input
-                        id="bd-issue-input"
-                        type="text"
-                        name="issue"
-                        required
-                        placeholder="Breakdown Issue (e.g. Slider jam)"
-                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm focus:border-rose-400 focus:outline-none"
-                    />
-                    <button
-                        id="bd-submit-btn"
-                        type="submit"
-                        class="bg-rose-500 hover:bg-rose-400 text-white font-mono font-bold text-sm rounded-lg px-4 py-2 transition"
-                    >
-                        Save Breakdown
+                <form id="add-pm-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
+                    <input type="date" id="pm-date-input" required class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono text-amber-300" />
+                    <input type="text" id="pm-mould-no-input" required placeholder="MOULD NO (e.g. IM-101)" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                    <input type="text" id="pm-exchange-input" placeholder="EXCHANG PM MOULD" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                    <input type="text" id="pm-postpond-input" placeholder="POSTPOND PM MOULD" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                    <input type="text" id="pm-remark-input" placeholder="REMARK" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs" />
+                    <button type="submit" class="bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono font-bold text-xs rounded-lg px-3 py-2">
+                        Save PM
                     </button>
                 </form>
             </section>
 
-            <!-- Add Mold PM Form (Collapsible) -->
-            <section id="add-tool-panel" class="hidden rounded-2xl bg-[#11151d] border border-amber-400/40 p-5">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-base font-bold text-amber-300">Add Mold to PM Plan</h2>
-                    <button
-                        type="button"
-                        onclick="document.getElementById('add-tool-panel').classList.add('hidden')"
-                        class="text-xs font-mono text-stone-400 hover:text-white"
-                    >
-                        Close [X]
-                    </button>
+            <!-- Collapsible Add Breakdown Form -->
+            <section id="add-bd-panel" class="hidden rounded-2xl bg-[#11151d] border border-rose-500/40 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-sm font-bold text-rose-300 font-mono uppercase">Add Breakdown Entry</h2>
+                    <button type="button" id="close-add-bd-btn" class="text-xs font-mono text-stone-400 hover:text-white">Close [X]</button>
                 </div>
-                <form id="add-tool-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                    <input
-                        type="text"
-                        name="toolCode"
-                        required
-                        placeholder="Tool ID (e.g. IM-108)"
-                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-amber-400 focus:outline-none"
-                    />
-                    <input
-                        type="text"
-                        name="moldName"
-                        required
-                        placeholder="Mold Name (e.g. Bumper Clip 4-Cav)"
-                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm focus:border-amber-400 focus:outline-none"
-                    />
-                    <input
-                        type="text"
-                        name="machineNo"
-                        required
-                        placeholder="Machine No (e.g. IMM-04)"
-                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-amber-400 focus:outline-none"
-                    />
-                    <input
-                        type="date"
-                        id="new-tool-date"
-                        name="scheduledDate"
-                        required
-                        class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono text-amber-300 focus:border-amber-400 focus:outline-none"
-                    />
-                    <button
-                        type="submit"
-                        class="bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono font-bold text-sm rounded-lg px-4 py-2 transition"
-                    >
-                        Save to Plan
+                <form id="add-bd-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2.5">
+                    <input type="date" id="bd-entry-date" required class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono text-rose-300" />
+                    <input type="text" id="bd-entry-mould" required placeholder="MOULD NO" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                    <input type="text" id="bd-entry-status" required placeholder="STATUS" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                    <input type="text" id="bd-entry-problem" required placeholder="PROBLEM" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs" />
+                    <input type="text" id="bd-entry-mc" required placeholder="M.C NO" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs font-mono" />
+                    <input type="text" id="bd-entry-remark" placeholder="REMARK" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-2 text-xs" />
+                    <button type="submit" class="bg-rose-500 hover:bg-rose-400 text-white font-mono font-bold text-xs rounded-lg px-3 py-2">
+                        Save BD
                     </button>
                 </form>
             </section>
 
-            <!-- 12-Month Calendar Card + All-Month PM Plan Slide Strip -->
-            <section class="rounded-2xl bg-[#11151d] border border-stone-800/90 p-4 sm:p-5 space-y-4">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <h2 id="calendar-month-heading" class="text-base sm:text-lg font-bold">Calendar</h2>
-                        <p class="text-xs text-stone-400">
-                            Slide across all 12 months or click any date to view, edit, delete, or add PM plans
-                        </p>
-                    </div>
-
-                    <div class="flex flex-wrap items-center gap-2">
-                        <button
-                            id="prev-month-btn"
-                            type="button"
-                            class="px-3 py-1.5 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono transition"
-                        >
-                            &larr; Prev
-                        </button>
-
-                        <select
-                            id="calendar-month-select"
-                            aria-label="Select Month"
-                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-amber-300 focus:border-amber-400 focus:outline-none cursor-pointer"
-                        >
-                            <option value="0">January</option>
-                            <option value="1">February</option>
-                            <option value="2">March</option>
-                            <option value="3">April</option>
-                            <option value="4">May</option>
-                            <option value="5">June</option>
-                            <option value="6">July</option>
-                            <option value="7">August</option>
-                            <option value="8">September</option>
-                            <option value="9">October</option>
-                            <option value="10">November</option>
-                            <option value="11">December</option>
-                        </select>
-
-                        <select
-                            id="calendar-year-select"
-                            aria-label="Select Year"
-                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-stone-200 focus:border-amber-400 focus:outline-none cursor-pointer"
-                        ></select>
-
-                        <button
-                            id="next-month-btn"
-                            type="button"
-                            class="px-3 py-1.5 rounded-lg bg-[#0b0d11] hover:bg-stone-800 border border-stone-700 text-xs font-mono transition"
-                        >
-                            Next &rarr;
+            <!-- VIEW 1: PRESENT MONTH PM PLAN (Matches PRESENT PM PLAN PAGE FORMAT.jpg) -->
+            <section id="view-present-pm" class="view-section rounded-2xl bg-[#11151d] border-2 border-stone-700 overflow-hidden">
+                <div class="px-5 py-3.5 border-b-2 border-stone-700 bg-[#151a24] flex flex-wrap items-center justify-between gap-3">
+                    <h2 class="text-base sm:text-lg font-bold tracking-wide lowercase">present month pm plan</h2>
+                    <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+                        <label class="text-stone-400">date:</label>
+                        <input id="pm-view-date" type="date" class="bg-[#0b0d11] border border-amber-400/50 rounded-lg px-2.5 py-1 text-amber-300" />
+                        <button id="pm-show-all-dates-btn" type="button" class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300 font-bold">
+                            All Dates
                         </button>
                     </div>
                 </div>
 
-                <!-- 12-Month Quick Switcher Slide Strip -->
-                <div id="twelve-month-pills" class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono"></div>
-
-                <!-- Weekday Headers -->
-                <div class="grid grid-cols-7 gap-1.5 sm:gap-2 text-center text-[11px] font-mono uppercase text-stone-400">
-                    <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
-                </div>
-
-                <!-- Days Grid -->
-                <div id="calendar-days-grid" class="grid grid-cols-7 gap-1.5 sm:gap-2"></div>
-
-                <!-- Clicked Date Saved Status Banner -->
-                <div
-                    id="clicked-date-banner"
-                    class="rounded-xl border border-stone-800 bg-[#0b0d11] px-4 py-3 flex flex-wrap items-center justify-between gap-3"
-                >
-                    <div class="space-y-1 flex-1 min-w-[220px]">
-                        <div id="clicked-date-badge" class="text-[11px] font-mono uppercase text-amber-300">
-                            Selected Date Record
-                        </div>
-                        <div id="clicked-date-summary" class="text-xs sm:text-sm text-stone-200">
-                            Select a date to view saved PM status.
-                        </div>
-                        <div id="clicked-date-quick-actions" class="flex flex-wrap items-center gap-2 pt-1"></div>
-                    </div>
-                    <button
-                        id="quick-add-for-selected-date-btn"
-                        type="button"
-                        class="px-3 py-1.5 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-xs font-mono font-semibold transition"
-                    >
-                        + Add PM on Selected Date
-                    </button>
-                </div>
-            </section>
-
-            <!-- Daily Mold PM Cards -->
-            <section class="space-y-3">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <h2 id="daily-section-heading" class="text-lg font-bold tracking-tight">Mold PM for Selected Date</h2>
-                    <span class="text-xs font-mono text-stone-400">
-                        Edit, Delete, Photos, or Running / Swap
-                    </span>
-                </div>
-                <div id="daily-cards-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
-            </section>
-
-            <!-- Full PM Plan & All-Month Slide Table -->
-            <section id="all-month-pm-section" class="rounded-2xl bg-[#11151d] border border-stone-800/90 overflow-hidden">
-                <div class="px-5 py-4 border-b border-stone-800 flex flex-wrap items-center justify-between gap-2">
-                    <h3 id="pm-schedule-heading" class="font-bold text-base">PM Plan</h3>
-                    <div class="flex items-center gap-2 text-xs font-mono">
-                        <button
-                            id="filter-month-btn"
-                            type="button"
-                            class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300"
-                        >
-                            Running Month
-                        </button>
-                        <button
-                            id="filter-all-btn"
-                            type="button"
-                            class="px-2.5 py-1 rounded-lg bg-[#0b0d11] border border-stone-700 text-stone-300 hover:border-amber-400"
-                        >
-                            All Month PM Plan
-                        </button>
-                    </div>
-                </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse text-sm">
+                    <table class="w-full text-left border-collapse text-xs sm:text-sm">
                         <thead>
-                            <tr class="border-b border-stone-800/80 text-[11px] font-mono uppercase text-stone-400 bg-[#0d1017]">
-                                <th class="py-3 px-4">DATE</th>
-                                <th class="py-3 px-4">TOOL ID</th>
-                                <th class="py-3 px-4">MOLD &amp; MACHINE</th>
-                                <th class="py-3 px-4">ACTUAL PM MOLD (SELF)</th>
-                                <th class="py-3 px-4">STATUS</th>
-                                <th class="py-3 px-4">EDIT &amp; DELETE</th>
+                            <tr class="border-b-2 border-stone-700 bg-[#0d1017] font-mono uppercase text-[11px] text-stone-200">
+                                <th class="py-3 px-3 border-r border-stone-800">DATE</th>
+                                <th class="py-3 px-3 border-r border-stone-800">S.R NO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">MOULD NO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">EXCHANG PM MOULD</th>
+                                <th class="py-3 px-3 border-r border-stone-800">STATUS</th>
+                                <th class="py-3 px-3 border-r border-stone-800">PHOTO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">REMARK</th>
+                                <th class="py-3 px-3">POSTPOND PM MOULD</th>
                             </tr>
                         </thead>
-                        <tbody id="schedule-table-body" class="divide-y divide-stone-800/60"></tbody>
+                        <tbody id="present-pm-tbody" class="divide-y divide-stone-800"></tbody>
                     </table>
+                </div>
+            </section>
+
+            <!-- VIEW 2: ALL PM PLAN HISTORY (Matches PM PLAN HISTORY PAGE.jpg) -->
+            <section id="view-pm-history" class="view-section hidden rounded-2xl bg-[#11151d] border-2 border-stone-700 overflow-hidden">
+                <div class="px-5 py-3.5 border-b-2 border-stone-700 bg-[#151a24] flex flex-wrap items-center justify-between gap-3">
+                    <h2 class="text-sm sm:text-base font-bold uppercase tracking-wide">PM PLAN HISTORY PAGE FORMAT</h2>
+                    <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+                        <input id="pm-hist-date-filter" type="date" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1 text-amber-300" />
+                        <button id="pm-hist-all-btn" type="button" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-bold">
+                            All Dates
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                        <thead>
+                            <tr class="border-b-2 border-stone-700 bg-[#0d1017] font-mono uppercase text-[11px] text-stone-200">
+                                <th class="py-3 px-3 border-r border-stone-800">S.R NO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">MOULD NO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">STATUS</th>
+                                <th class="py-3 px-3 border-r border-stone-800">REMARK</th>
+                                <th class="py-3 px-3">PHOTOS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pm-history-tbody" class="divide-y divide-stone-800"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- VIEW 3: PRESENT MONTH BREAK DOWN (Matches Untitled.jpg) -->
+            <section id="view-present-breakdown" class="view-section hidden rounded-2xl bg-[#11151d] border-2 border-stone-700 overflow-hidden">
+                <div class="px-5 py-3.5 border-b-2 border-stone-700 bg-[#151a24] flex flex-wrap items-center justify-between gap-3">
+                    <h2 id="present-bd-heading" class="text-sm sm:text-base font-bold uppercase tracking-wide">PRESENT MONTH BRECK DOWN PAGE FORMAT</h2>
+                    <button id="present-bd-all-month-btn" type="button" class="px-2.5 py-1 rounded-lg bg-rose-500/20 border border-rose-400/50 text-rose-200 font-mono text-xs font-bold">
+                        Present Month All Dates
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                        <thead>
+                            <tr class="border-b-2 border-stone-700 bg-[#0d1017] font-mono uppercase text-[11px] text-stone-200">
+                                <th class="py-3 px-3 border-r border-stone-800">S.R</th>
+                                <th class="py-3 px-3 border-r border-stone-800">DATE</th>
+                                <th class="py-3 px-3 border-r border-stone-800">MOULD NO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">STATUS</th>
+                                <th class="py-3 px-3 border-r border-stone-800">PROBLEM</th>
+                                <th class="py-3 px-3 border-r border-stone-800">M.C NO</th>
+                                <th class="py-3 px-3">REMARK</th>
+                            </tr>
+                        </thead>
+                        <tbody id="present-bd-tbody" class="divide-y divide-stone-800"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- VIEW 4: ALL MONTH BREAK DOWN HISTORY (Matches ALL PM BRACK PAGE FORMAT.jpg) -->
+            <section id="view-breakdown-history" class="view-section hidden rounded-2xl bg-[#11151d] border-2 border-stone-700 overflow-hidden">
+                <div class="px-5 py-3.5 border-b-2 border-stone-700 bg-[#151a24] flex flex-wrap items-center justify-between gap-3">
+                    <h2 class="text-sm sm:text-base font-bold uppercase tracking-wide">ALL MONTH BRACK DOWN PAGE FORMAT</h2>
+                    <div class="flex items-center gap-2 text-xs font-mono">
+                        <input id="all-bd-date-filter" type="date" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1 text-rose-300" />
+                        <button id="all-bd-clear-date-btn" type="button" class="px-2.5 py-1 rounded-lg bg-stone-800 border border-stone-600 text-stone-200">
+                            All Dates
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                        <thead>
+                            <tr class="border-b-2 border-stone-700 bg-[#0d1017] font-mono uppercase text-[11px] text-stone-200">
+                                <th class="py-3 px-3 border-r border-stone-800">S.R NO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">DATE</th>
+                                <th class="py-3 px-3 border-r border-stone-800">MOULD NO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">PBOLEM</th>
+                                <th class="py-3 px-3 border-r border-stone-800">REMARK</th>
+                                <th class="py-3 px-3">M.C NO</th>
+                            </tr>
+                        </thead>
+                        <tbody id="all-bd-tbody" class="divide-y divide-stone-800"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- VIEW 5: ALL PM MOULD PHOTOS HISTORY -->
+            <section id="view-photos-history" class="view-section hidden rounded-2xl bg-[#11151d] border-2 border-stone-700 p-4 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-sm sm:text-base font-bold uppercase tracking-wide">ALL PM MOULD PHOTOS HISTORY</h2>
+                    <span id="photos-gallery-count" class="text-xs font-mono text-emerald-300">0 records</span>
+                </div>
+                <div id="photos-gallery-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+            </section>
+
+            <!-- VIEW 6: SETTING -->
+            <section id="view-settings" class="view-section hidden rounded-2xl bg-[#11151d] border-2 border-stone-700 p-5 space-y-4">
+                <h2 class="text-base font-bold uppercase tracking-wide">Settings &amp; Data Management</h2>
+                <div class="flex flex-wrap items-center gap-3 text-xs font-mono">
+                    <button id="export-json-btn" type="button" class="px-4 py-2 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-stone-600">
+                        Export JSON Backup
+                    </button>
+                    <label class="px-4 py-2 rounded-lg bg-[#181d28] hover:bg-stone-800 border border-stone-600 cursor-pointer">
+                        Import JSON Backup
+                        <input id="import-json-input" type="file" accept="application/json" class="hidden" />
+                    </label>
+                    <button id="export-csv-btn" type="button" class="px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-300 font-bold">
+                        Export CSV
+                    </button>
+                    <button id="clear-all-data-btn" type="button" class="px-4 py-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/50 text-rose-300 font-bold">
+                        Reset / Clear All Data
+                    </button>
                 </div>
             </section>
         </main>
     </div>
 
-    <!-- Edit Mold PM Modal -->
-    <div id="edit-tool-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-        <div class="w-full max-w-xl rounded-2xl bg-[#11151d] border border-stone-700 p-5 sm:p-6 space-y-4 shadow-2xl">
+    <!-- Photo / Status / Remark Modal -->
+    <div id="photo-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div class="w-full max-w-2xl rounded-2xl bg-[#11151d] border border-stone-700 p-5 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <span class="text-[11px] font-mono uppercase text-amber-400">Edit Saved Mold Record</span>
-                    <h3 id="edit-modal-heading" class="text-lg font-bold mt-0.5">Edit Mold PM</h3>
+                    <span class="text-[11px] font-mono uppercase text-amber-400">PM Photo &amp; Status Update</span>
+                    <h3 id="modal-mould-title" class="text-lg font-bold mt-0.5">Mould PM</h3>
                 </div>
-                <button id="close-edit-modal-btn" type="button" class="text-stone-400 hover:text-white font-mono text-sm">
-                    Close [X]
-                </button>
-            </div>
-
-            <form id="edit-tool-form" class="space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-mono text-stone-400 mb-1">Tool ID (Planned)</label>
-                        <input
-                            id="edit-tool-code"
-                            type="text"
-                            required
-                            class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-amber-400 focus:outline-none"
-                        />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-mono text-stone-400 mb-1">Machine No</label>
-                        <input
-                            id="edit-machine-no"
-                            type="text"
-                            required
-                            class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-amber-400 focus:outline-none"
-                        />
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-mono text-stone-400 mb-1">Mold Name (Planned)</label>
-                        <input
-                            id="edit-mold-name"
-                            type="text"
-                            required
-                            class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm focus:border-amber-400 focus:outline-none"
-                        />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-mono text-emerald-300 mb-1">Actual PM Mold Done (Self)</label>
-                        <input
-                            id="edit-actual-mold"
-                            type="text"
-                            placeholder="If plan mold N/A, enter mold done..."
-                            class="w-full bg-[#0b0d11] border border-emerald-500/40 rounded-lg px-3 py-2 text-sm font-mono text-emerald-200 placeholder-stone-500 focus:border-emerald-400 focus:outline-none"
-                        />
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-mono text-stone-400 mb-1">Scheduled Date</label>
-                        <input
-                            id="edit-scheduled-date"
-                            type="date"
-                            required
-                            class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono text-amber-300 focus:border-amber-400 focus:outline-none"
-                        />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-mono text-stone-400 mb-1">Status</label>
-                        <select
-                            id="edit-status"
-                            class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-amber-400 focus:outline-none"
-                        >
-                            <option value="Scheduled">Scheduled</option>
-                            <option value="PM Completed">PM Completed</option>
-                            <option value="Swapped / Rescheduled">Swapped / Rescheduled</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-mono text-stone-400 mb-1">PM / Maintenance Remarks</label>
-                    <textarea
-                        id="edit-remarks"
-                        rows="2"
-                        placeholder="Ejector pins greased, cooling lines flushed, slider checked..."
-                        class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-sm focus:border-amber-400 focus:outline-none"
-                    ></textarea>
-                </div>
-
-                <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-800">
-                    <button
-                        id="delete-from-edit-btn"
-                        type="button"
-                        class="px-3.5 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-mono text-xs font-semibold transition"
-                    >
-                        Delete Record
-                    </button>
-                    <div class="flex items-center gap-2">
-                        <button
-                            id="cancel-edit-btn"
-                            type="button"
-                            class="px-3.5 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 font-mono text-xs transition"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            class="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-mono text-xs font-bold transition"
-                        >
-                            Save Changes
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Before / After Photo & PM Completion Modal -->
-    <div id="photo-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-        <div class="w-full max-w-2xl rounded-2xl bg-[#11151d] border border-stone-700 p-5 sm:p-6 space-y-5 shadow-2xl max-h-[92vh] overflow-y-auto">
-            <div class="flex items-start justify-between gap-4">
-                <div>
-                    <span class="text-[11px] font-mono uppercase text-amber-400">Maintenance Photo Verification</span>
-                    <h3 id="modal-tool-title" class="text-lg font-bold mt-0.5">Mold PM Photos</h3>
-                </div>
-                <button id="close-modal-btn" type="button" class="text-stone-400 hover:text-white font-mono text-sm">
-                    Close [X]
-                </button>
+                <button id="close-photo-modal-btn" type="button" class="text-stone-400 hover:text-white font-mono text-sm">Close [X]</button>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between">
-                        <label class="block text-xs font-mono uppercase text-stone-300">Before PM Photo</label>
-                        <button id="remove-before-photo-btn" type="button" class="text-[11px] font-mono text-rose-300 hover:text-rose-200 underline">
-                            Remove
-                        </button>
-                    </div>
-                    <label class="block cursor-pointer rounded-xl border border-dashed border-stone-700 hover:border-amber-400 bg-[#0b0d11] p-3 text-center transition">
+                <div class="space-y-1.5">
+                    <label class="block text-xs font-mono uppercase text-stone-300">Before PM Photo</label>
+                    <label class="block cursor-pointer rounded-xl border border-dashed border-stone-700 hover:border-amber-400 bg-[#0b0d11] p-3 text-center">
                         <input id="before-photo-input" type="file" accept="image/*" capture="environment" class="hidden" />
-                        <img id="before-photo-preview" alt="Before PM preview" class="hidden w-full h-44 object-cover rounded-lg mb-2" />
-                        <div id="before-photo-placeholder" class="py-8 text-xs font-mono text-stone-400">
-                            Tap to capture or upload BEFORE photo
-                        </div>
+                        <img id="before-photo-preview" alt="Before preview" class="hidden w-full h-40 object-cover rounded-lg mb-2" />
+                        <div id="before-photo-placeholder" class="py-8 text-xs font-mono text-stone-400">Tap to upload BEFORE photo</div>
                     </label>
                 </div>
-
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between">
-                        <label class="block text-xs font-mono uppercase text-stone-300">After PM Photo</label>
-                        <button id="remove-after-photo-btn" type="button" class="text-[11px] font-mono text-rose-300 hover:text-rose-200 underline">
-                            Remove
-                        </button>
-                    </div>
-                    <label class="block cursor-pointer rounded-xl border border-dashed border-stone-700 hover:border-emerald-400 bg-[#0b0d11] p-3 text-center transition">
+                <div class="space-y-1.5">
+                    <label class="block text-xs font-mono uppercase text-stone-300">After PM Photo</label>
+                    <label class="block cursor-pointer rounded-xl border border-dashed border-stone-700 hover:border-emerald-400 bg-[#0b0d11] p-3 text-center">
                         <input id="after-photo-input" type="file" accept="image/*" capture="environment" class="hidden" />
-                        <img id="after-photo-preview" alt="After PM preview" class="hidden w-full h-44 object-cover rounded-lg mb-2" />
-                        <div id="after-photo-placeholder" class="py-8 text-xs font-mono text-stone-400">
-                            Tap to capture or upload AFTER photo
-                        </div>
+                        <img id="after-photo-preview" alt="After preview" class="hidden w-full h-40 object-cover rounded-lg mb-2" />
+                        <div id="after-photo-placeholder" class="py-8 text-xs font-mono text-stone-400">Tap to upload AFTER photo</div>
                     </label>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-mono text-stone-400 mb-1">EXCHANG PM MOULD</label>
+                    <input id="modal-exchange-mould" type="text" class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-xs font-mono" />
+                </div>
+                <div>
+                    <label class="block text-xs font-mono text-stone-400 mb-1">POSTPOND PM MOULD</label>
+                    <input id="modal-postpond-mould" type="text" class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-xs font-mono" />
                 </div>
             </div>
 
             <div>
-                <label class="block text-xs font-mono uppercase text-stone-400 mb-1.5">PM Checklist / Remarks</label>
-                <textarea
-                    id="pm-remarks"
-                    rows="2"
-                    placeholder="Cleaned cavity/core, greased ejector pins, checked cooling lines..."
-                    class="w-full bg-[#0b0d11] border border-stone-700 rounded-xl px-3 py-2 text-sm focus:border-amber-400 focus:outline-none"
-                ></textarea>
+                <label class="block text-xs font-mono text-stone-400 mb-1">REMARK</label>
+                <textarea id="modal-remark-input" rows="2" class="w-full bg-[#0b0d11] border border-stone-700 rounded-xl px-3 py-2 text-xs"></textarea>
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-800">
-                <button
-                    id="delete-from-photo-btn"
-                    type="button"
-                    class="px-3.5 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-mono text-xs font-semibold transition"
-                >
-                    Delete Record
+                <button id="delete-pm-record-btn" type="button" class="px-3.5 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-mono text-xs font-semibold">
+                    Delete
                 </button>
-                <div class="flex flex-wrap items-center gap-2">
-                    <button id="save-photos-only-btn" type="button" class="px-4 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 font-mono text-xs font-semibold transition">
-                        Save Photos Only
+                <div class="flex items-center gap-2">
+                    <button id="save-pm-only-btn" type="button" class="px-4 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 font-mono text-xs font-semibold">
+                        Save Only
                     </button>
-                    <button id="complete-pm-btn" type="button" class="px-4 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-mono text-xs font-bold transition">
+                    <button id="mark-pm-done-btn" type="button" class="px-4 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-mono text-xs font-bold">
                         Mark PM Completed
                     </button>
                 </div>
@@ -734,94 +375,36 @@
         </div>
     </div>
 
-    <!-- Photo to Text Converter Modal -->
+    <!-- Photo to Text Modal -->
     <div id="ocr-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-        <div class="w-full max-w-3xl rounded-2xl bg-[#11151d] border border-stone-700 p-5 sm:p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
-            <div class="flex items-start justify-between gap-4">
+        <div class="w-full max-w-2xl rounded-2xl bg-[#11151d] border border-stone-700 p-5 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div class="flex items-start justify-between gap-3">
                 <div>
-                    <span class="text-[11px] font-mono uppercase text-sky-400">Photo to Text Data Converter</span>
-                    <h3 class="text-lg font-bold mt-0.5">Scan Plan Photo &amp; Bind Molds to Calendar Dates</h3>
+                    <span class="text-[11px] font-mono uppercase text-sky-400">Photo to Text</span>
+                    <h3 class="text-lg font-bold mt-0.5">Scan Plan Photo &amp; Map to Dates</h3>
                 </div>
-                <button id="close-ocr-modal-btn" type="button" class="text-stone-400 hover:text-white font-mono text-sm">
-                    Close [X]
+                <button id="close-ocr-modal-btn" type="button" class="text-stone-400 hover:text-white font-mono text-sm">Close [X]</button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input id="plan-photo-input" type="file" accept="image/*" capture="environment" class="bg-[#0b0d11] border border-stone-700 rounded-lg p-2 text-xs font-mono" />
+                <input id="plan-start-date" type="date" class="bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-xs font-mono text-amber-300" />
+            </div>
+            <div id="ocr-status-line" class="text-xs font-mono text-sky-300">Ready</div>
+            <textarea id="datewise-text-output" rows="7" placeholder="2026-11-22 | IM-101, IM-102, IM-103" class="w-full bg-[#0b0d11] border border-stone-700 rounded-xl p-3 text-xs font-mono"></textarea>
+            <div class="flex justify-end gap-2">
+                <button id="auto-map-3-btn" type="button" class="px-3 py-2 rounded-lg bg-amber-400/20 border border-amber-400/40 text-amber-300 font-mono text-xs font-bold">
+                    Auto-Map 3/Day
                 </button>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="space-y-2">
-                    <label class="block text-xs font-mono uppercase text-stone-300">1. Upload PM Plan Photo</label>
-                    <label class="block cursor-pointer rounded-xl border border-dashed border-stone-700 hover:border-sky-400 bg-[#0b0d11] p-3 text-center transition">
-                        <input id="plan-photo-input" type="file" accept="image/*" capture="environment" class="hidden" />
-                        <img id="plan-photo-preview" alt="PM plan photo preview" class="hidden w-full h-44 object-contain rounded-lg mb-2 bg-black/40" />
-                        <div id="plan-photo-placeholder" class="py-8 text-xs font-mono text-stone-400">
-                            Tap to select or capture PM plan photo
-                        </div>
-                    </label>
-                    <div id="ocr-progress-box" class="hidden space-y-1">
-                        <div class="flex justify-between text-[11px] font-mono text-sky-300">
-                            <span id="ocr-status-text">Scanning image...</span>
-                            <span id="ocr-percent">0%</span>
-                        </div>
-                        <div class="w-full h-1.5 rounded-full bg-stone-800 overflow-hidden">
-                            <div id="ocr-progress-bar" class="h-full bg-sky-400 transition-all duration-150" style="width: 0%"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <label class="block text-xs font-mono uppercase text-stone-300">2. Month Start Date</label>
-                        <button
-                            id="auto-distribute-80-btn"
-                            type="button"
-                            class="px-2.5 py-1 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-amber-300 text-[11px] font-mono font-semibold transition"
-                        >
-                            Auto-Map 3 Molds/Day
-                        </button>
-                    </div>
-                    <input
-                        id="plan-start-date"
-                        type="date"
-                        class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-xs font-mono text-amber-300 focus:border-sky-400 focus:outline-none"
-                    />
-                </div>
-            </div>
-
-            <div class="space-y-1.5">
-                <div class="flex items-center justify-between gap-2">
-                    <label for="datewise-text-output" class="text-xs font-mono uppercase text-stone-300">
-                        3. Converted Date-Wise Schedule Text
-                    </label>
-                    <button id="copy-datewise-text-btn" type="button" class="text-xs font-mono text-sky-300 hover:text-sky-200 underline">
-                        Copy Text
-                    </button>
-                </div>
-                <textarea
-                    id="datewise-text-output"
-                    rows="8"
-                    placeholder="2026-11-01 | IM-101, IM-102, IM-103&#10;2026-11-02 | IM-104, IM-105, IM-106"
-                    class="w-full bg-[#0b0d11] border border-stone-700 rounded-xl p-3 text-xs font-mono text-stone-100 leading-relaxed focus:border-sky-400 focus:outline-none"
-                ></textarea>
-                <div id="parsed-summary-label" class="text-[11px] font-mono text-stone-400">
-                    0 molds ready to save
-                </div>
-            </div>
-
-            <div class="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-stone-800">
-                <button
-                    id="import-replace-btn"
-                    type="button"
-                    class="px-4 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-mono text-xs font-bold transition"
-                >
-                    Save Schedule to Calendar Dates
+                <button id="import-ocr-schedule-btn" type="button" class="px-4 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-mono text-xs font-bold">
+                    Save Schedule
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Toast Notification -->
     <div id="toast" class="fixed bottom-5 right-5 z-50 translate-y-20 opacity-0 pointer-events-none transition-all duration-300 rounded-xl bg-stone-900 border border-amber-400/50 px-4 py-2.5 text-xs font-mono text-amber-200 shadow-xl"></div>
 
+    <script src="shared.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
