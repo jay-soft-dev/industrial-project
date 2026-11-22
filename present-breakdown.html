@@ -9,27 +9,59 @@
         tailwind.config = { darkMode: "class", theme: { extend: { fontFamily: { sans: ["Space Grotesk", "sans-serif"], mono: ["JetBrains Mono", "monospace"] } } } };
     </script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
 </head>
 <body class="bg-[#0b0d11] text-stone-100 min-h-screen antialiased">
-    <header class="sticky top-0 z-30 border-b border-stone-800 bg-[#0b0d11]/95 backdrop-blur px-4 sm:px-6 py-3 flex items-center gap-2.5">
-        <button id="toggle-slide-btn" type="button" class="px-3 py-1.5 rounded-lg bg-[#181d28] border border-amber-400/50 text-amber-300 font-mono text-xs font-bold">&#9776; Slide</button>
-        <span class="font-bold text-sm sm:text-base text-rose-400">Present Month Breakdown Page</span>
+    <header class="sticky top-0 z-30 border-b border-stone-800 bg-[#0b0d11]/95 backdrop-blur px-4 sm:px-6 py-3 flex items-center justify-between gap-2.5">
+        <div class="flex items-center gap-2.5">
+            <button id="toggle-slide-btn" type="button" class="px-3 py-1.5 rounded-lg bg-[#181d28] border border-amber-400/50 text-amber-300 font-mono text-xs font-bold">&#9776; Slide</button>
+            <span class="font-bold text-sm sm:text-base text-rose-400">Present Month Breakdown</span>
+        </div>
+        <a href="breakdown.html" class="px-3 py-1.5 rounded-lg bg-rose-500 text-white font-mono text-xs font-bold">
+            + Enter Data
+        </a>
     </header>
+
     <div id="page-shell" class="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        <aside id="slide-menu-aside" class="lg:col-span-3 rounded-2xl border border-stone-800 bg-[#11151d] p-2.5 space-y-1.5"></aside>
+        <aside id="slide-menu-aside" class="lg:col-span-3 rounded-2xl border border-stone-800 bg-[#11151d] p-2.5 space-y-2"></aside>
+
         <main class="lg:col-span-9 space-y-4">
             <section class="rounded-2xl bg-[#11151d] border border-rose-500/40 p-4 space-y-3">
-                <h2 id="present-bd-heading" class="text-base font-bold">Present Month Breakdown</h2>
+                <div class="flex flex-wrap items-center justify-between gap-2.5">
+                    <h2 id="present-bd-title" class="text-base font-bold uppercase tracking-wide">PRESENT MONTH BRECK DOWN PAGE FORMAT</h2>
+                    <div class="flex flex-wrap items-center gap-2 font-mono text-xs">
+                        <input
+                            id="present-bd-search"
+                            type="text"
+                            placeholder="Mould / Problem / M.C..."
+                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1.5 text-white placeholder-stone-500"
+                        />
+                        <input
+                            id="present-bd-date"
+                            type="date"
+                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1.5 text-rose-300"
+                        />
+                        <button
+                            id="present-bd-all-btn"
+                            type="button"
+                            class="px-2.5 py-1.5 rounded-lg bg-rose-500/20 border border-rose-400/50 text-rose-200 font-bold"
+                        >
+                            All Dates
+                        </button>
+                    </div>
+                </div>
+
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse text-sm">
                         <thead>
-                            <tr class="border-b border-stone-800 text-[10px] font-mono uppercase text-stone-400 bg-[#0d1017]">
-                                <th class="py-2.5 px-3">DATE</th>
-                                <th class="py-2.5 px-3">BREAKDOWN MOULD NUM</th>
-                                <th class="py-2.5 px-3">REASON</th>
-                                <th class="py-2.5 px-3">STATUS</th>
-                                <th class="py-2.5 px-3">M/C NO</th>
-                                <th class="py-2.5 px-3">TIME</th>
+                            <tr class="border-b-2 border-stone-700 text-[10px] font-mono uppercase text-stone-200 bg-[#0d1017]">
+                                <th class="py-2.5 px-3 border-r border-stone-800">S.R</th>
+                                <th class="py-2.5 px-3 border-r border-stone-800">DATE</th>
+                                <th class="py-2.5 px-3 border-r border-stone-800">MOULD NO</th>
+                                <th class="py-2.5 px-3 border-r border-stone-800">STATUS</th>
+                                <th class="py-2.5 px-3 border-r border-stone-800">PROBLEM</th>
+                                <th class="py-2.5 px-3 border-r border-stone-800">M.C NO</th>
+                                <th class="py-2.5 px-3">REMARK</th>
                             </tr>
                         </thead>
                         <tbody id="present-bd-tbody" class="divide-y divide-stone-800/60"></tbody>
@@ -38,6 +70,8 @@
             </section>
         </main>
     </div>
+
+    <div id="toast" class="fixed bottom-5 right-5 z-50 translate-y-20 opacity-0 pointer-events-none transition-all duration-300 rounded-xl bg-stone-900 border border-rose-400/50 px-4 py-2.5 text-xs font-mono text-rose-200"></div>
     <script src="shared.js"></script>
     <script src="present-breakdown.js"></script>
 </body>

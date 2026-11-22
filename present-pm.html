@@ -3,27 +3,134 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Present PM Plan — ToolSync PM</title>
+    <title>Present Month PM Plan — ToolSync PM</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: "class", theme: { extend: { fontFamily: { sans: ["Space Grotesk", "sans-serif"], mono: ["JetBrains Mono", "monospace"] } } } };
     </script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
 </head>
 <body class="bg-[#0b0d11] text-stone-100 min-h-screen antialiased">
-    <header class="sticky top-0 z-30 border-b border-stone-800 bg-[#0b0d11]/95 backdrop-blur px-4 sm:px-6 py-3 flex items-center gap-2.5">
-        <button id="toggle-slide-btn" type="button" class="px-3 py-1.5 rounded-lg bg-[#181d28] border border-amber-400/50 text-amber-300 font-mono text-xs font-bold">&#9776; Slide</button>
-        <span id="present-pm-header-title" class="font-bold text-sm sm:text-base text-amber-300">Present PM Plan</span>
+    <header class="sticky top-0 z-30 border-b border-stone-800 bg-[#0b0d11]/95 backdrop-blur px-4 sm:px-6 py-3 flex items-center justify-between gap-2.5">
+        <div class="flex items-center gap-2.5">
+            <button id="toggle-slide-btn" type="button" class="px-3 py-1.5 rounded-lg bg-[#181d28] border border-amber-400/50 text-amber-300 font-mono text-xs font-bold">&#9776; Slide</button>
+            <span class="font-bold text-sm sm:text-base text-amber-300">Present Month PM Plan</span>
+        </div>
+        <a href="pm-plan.html" class="px-3 py-1.5 rounded-lg bg-amber-400 text-stone-950 font-mono text-xs font-bold">
+            + Add Mould
+        </a>
     </header>
+
     <div id="page-shell" class="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        <aside id="slide-menu-aside" class="lg:col-span-3 rounded-2xl border border-stone-800 bg-[#11151d] p-2.5 space-y-1.5"></aside>
+        <aside id="slide-menu-aside" class="lg:col-span-3 rounded-2xl border border-stone-800 bg-[#11151d] p-2.5 space-y-2"></aside>
+
         <main class="lg:col-span-9 space-y-4">
-            <section class="rounded-2xl bg-[#11151d] border border-amber-400/40 p-4 space-y-3">
-                <h2 id="present-pm-heading" class="text-base font-bold">Present Month PM Plan</h2>
-                <div id="present-pm-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
+            <section class="rounded-2xl bg-[#11151d] border-2 border-stone-700 overflow-hidden">
+                <div class="px-5 py-3.5 border-b-2 border-stone-700 bg-[#151a24] flex flex-wrap items-center justify-between gap-3">
+                    <h2 id="present-pm-heading" class="text-base font-bold lowercase">present month pm plan</h2>
+                    <div class="flex flex-wrap items-center gap-2 font-mono text-xs">
+                        <input
+                            id="present-pm-search"
+                            type="text"
+                            placeholder="Mould / Status / Remark..."
+                            class="bg-[#0b0d11] border border-stone-700 rounded-lg px-2.5 py-1 text-white placeholder-stone-500"
+                        />
+                        <label class="text-stone-400">date:</label>
+                        <input
+                            id="present-pm-date"
+                            type="date"
+                            class="bg-[#0b0d11] border border-amber-400/50 rounded-lg px-2.5 py-1 text-amber-300"
+                        />
+                        <button
+                            id="present-pm-all-btn"
+                            type="button"
+                            class="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-400/50 text-amber-300 font-bold"
+                        >
+                            All Dates
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                        <thead>
+                            <tr class="border-b-2 border-stone-700 bg-[#0d1017] font-mono uppercase text-[11px] text-stone-200">
+                                <th class="py-3 px-3 border-r border-stone-800">DATE</th>
+                                <th class="py-3 px-3 border-r border-stone-800">S.R NO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">MOULD NO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">EXCHANG PM MOULD</th>
+                                <th class="py-3 px-3 border-r border-stone-800">STATUS</th>
+                                <th class="py-3 px-3 border-r border-stone-800">PHOTO</th>
+                                <th class="py-3 px-3 border-r border-stone-800">REMARK</th>
+                                <th class="py-3 px-3">POSTPOND PM MOULD</th>
+                            </tr>
+                        </thead>
+                        <tbody id="present-pm-tbody" class="divide-y divide-stone-800"></tbody>
+                    </table>
+                </div>
             </section>
         </main>
     </div>
+
+    <!-- Photo Modal -->
+    <div id="present-pm-photo-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div class="w-full max-w-2xl rounded-2xl bg-[#11151d] border border-stone-700 p-5 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <span class="text-[11px] font-mono uppercase text-amber-400">PM Photo &amp; Update</span>
+                    <h3 id="present-modal-title" class="text-lg font-bold mt-0.5">Mould PM</h3>
+                </div>
+                <button id="close-present-modal-btn" type="button" class="text-stone-400 hover:text-white font-mono text-sm">Close [X]</button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="space-y-1.5">
+                    <label class="block text-xs font-mono uppercase text-stone-300">Before PM Photo</label>
+                    <label class="block cursor-pointer rounded-xl border border-dashed border-stone-700 hover:border-amber-400 bg-[#0b0d11] p-3 text-center">
+                        <input id="present-before-input" type="file" accept="image/*" capture="environment" class="hidden" />
+                        <img id="present-before-preview" alt="Before" class="hidden w-full h-40 object-cover rounded-lg mb-2" />
+                        <div id="present-before-placeholder" class="py-8 text-xs font-mono text-stone-400">Tap for BEFORE photo</div>
+                    </label>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-xs font-mono uppercase text-stone-300">After PM Photo</label>
+                    <label class="block cursor-pointer rounded-xl border border-dashed border-stone-700 hover:border-emerald-400 bg-[#0b0d11] p-3 text-center">
+                        <input id="present-after-input" type="file" accept="image/*" capture="environment" class="hidden" />
+                        <img id="present-after-preview" alt="After" class="hidden w-full h-40 object-cover rounded-lg mb-2" />
+                        <div id="present-after-placeholder" class="py-8 text-xs font-mono text-stone-400">Tap for AFTER photo</div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-mono text-stone-400 mb-1">EXCHANG PM MOULD</label>
+                    <input id="present-modal-exchange" type="text" class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-xs font-mono" />
+                </div>
+                <div>
+                    <label class="block text-xs font-mono text-stone-400 mb-1">POSTPOND PM MOULD</label>
+                    <input id="present-modal-postpond" type="text" class="w-full bg-[#0b0d11] border border-stone-700 rounded-lg px-3 py-2 text-xs font-mono" />
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-mono text-stone-400 mb-1">REMARK</label>
+                <textarea id="present-modal-remark" rows="2" class="w-full bg-[#0b0d11] border border-stone-700 rounded-xl px-3 py-2 text-xs"></textarea>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-stone-800">
+                <button id="present-modal-save-btn" type="button" class="px-4 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 font-mono text-xs font-semibold">
+                    Save Only
+                </button>
+                <button id="present-modal-complete-btn" type="button" class="px-4 py-2 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-mono text-xs font-bold">
+                    Mark PM Completed
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-5 right-5 z-50 translate-y-20 opacity-0 pointer-events-none transition-all duration-300 rounded-xl bg-stone-900 border border-amber-400/50 px-4 py-2.5 text-xs font-mono text-amber-200"></div>
     <script src="shared.js"></script>
     <script src="present-pm.js"></script>
 </body>

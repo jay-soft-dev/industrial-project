@@ -8,7 +8,6 @@ let selectedDate = TODAY_ISO;
 let allDatesMode = true;
 let pmHistAllDates = true;
 let presentBdAllMonth = true;
-let allBdDateFilter = "";
 let activeModalToolId = null;
 let draftBeforePhoto = "";
 let draftAfterPhoto = "";
@@ -29,37 +28,6 @@ async function safeClearStore(storeName) {
     } catch {
         // Ignore storage errors
     }
-}
-
-function setActiveView(viewName) {
-    currentView = viewName;
-
-    document.querySelectorAll(".view-section").forEach((sec) => {
-        sec.classList.add("hidden");
-    });
-    const target = document.getElementById(`view-${viewName}`);
-    if (target) target.classList.remove("hidden");
-
-    const titles = {
-        "present-pm": "present month pm plan",
-        "pm-history": "PM PLAN HISTORY PAGE FORMAT",
-        "present-breakdown": "PRESENT MONTH BRECK DOWN PAGE FORMAT",
-        "breakdown-history": "ALL MONTH BRACK DOWN PAGE FORMAT",
-        "photos-history": "ALL PM MOULD PHOTOS HISTORY",
-        "settings": "SETTINGS"
-    };
-    document.getElementById("top-page-title").textContent = titles[viewName] || "Main Page Format";
-
-    document.querySelectorAll(".nav-item").forEach((btn) => {
-        const isActive = btn.dataset.view === viewName;
-        btn.className = `nav-item w-full text-left px-3 py-2.5 rounded-xl border font-semibold transition flex items-center justify-between ${
-            isActive
-                ? "border-amber-400 bg-amber-400/15 text-amber-300"
-                : "border-stone-800 bg-[#0b0d11] text-stone-300 hover:border-stone-600"
-        }`;
-    });
-
-    renderCurrentView();
 }
 
 function getAllSavedPhotos() {
@@ -92,6 +60,37 @@ function getAllSavedPhotos() {
             }
             return out;
         });
+}
+
+function setActiveView(viewName) {
+    currentView = viewName;
+
+    document.querySelectorAll(".view-section").forEach((sec) => {
+        sec.classList.add("hidden");
+    });
+    const target = document.getElementById(`view-${viewName}`);
+    if (target) target.classList.remove("hidden");
+
+    const titles = {
+        "present-pm": "present month pm plan",
+        "pm-history": "PM PLAN HISTORY PAGE FORMAT",
+        "present-breakdown": "PRESENT MONTH BRECK DOWN PAGE FORMAT",
+        "breakdown-history": "ALL MONTH BRACK DOWN PAGE FORMAT",
+        "photos-history": "ALL PM MOULD PHOTOS HISTORY",
+        "settings": "SETTINGS"
+    };
+    document.getElementById("top-page-title").textContent = titles[viewName] || "Main Page Format";
+
+    document.querySelectorAll(".nav-item").forEach((btn) => {
+        const isActive = btn.dataset.view === viewName;
+        btn.className = `nav-item w-full text-left px-3 py-2.5 rounded-xl border font-semibold transition flex items-center justify-between ${
+            isActive
+                ? "border-amber-400 bg-amber-400/15 text-amber-300"
+                : "border-stone-800 bg-[#0b0d11] text-stone-300 hover:border-stone-600"
+        }`;
+    });
+
+    renderCurrentView();
 }
 
 function updateBadges() {
@@ -312,7 +311,7 @@ function renderPhotosHistoryGallery() {
     grid.innerHTML = items.map((p) => `
         <div class="rounded-xl border border-stone-800 bg-[#0b0d11] p-3 space-y-2.5">
             <div class="flex items-center justify-between text-xs font-mono border-b border-stone-800 pb-2">
-                <span class="font-bold text-amber-300">MOULD: ${p.toolCode || "—"}</span>
+                <span class="font-bold text-amber-300">MOULD NO: ${p.toolCode || "—"}</span>
                 <span class="text-sky-300">DATE: ${p.date || "—"}</span>
             </div>
             <img src="${p.photo}" alt="${p.toolCode || "PM"} - ${p.date || ""}" class="w-full h-40 object-cover rounded-lg border border-stone-800" />

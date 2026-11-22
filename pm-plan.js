@@ -1,219 +1,230 @@
 renderSlideMenu("pm-plan.html");
 
-const todayStr = formatDateISO(new Date());
-const [iy, im] = todayStr.split("-").map(Number);
+const todayIso = formatDateISO(new Date());
+let toolsList = [];
+let breakdownsList = [];
+let showAllDates = true;
+let selectedFilterDate = todayIso;
+let editingId = null;
+let tempBefore = "";
+let tempAfter = "";
 
-let toolsData = [];
-let breakdownsData = [];
-let selectedDate = todayStr;
-let viewYear = iy;
-let viewMonth = im - 1;
-let showAllMonths = false;
+const dateInputEl = document.getElementById("pm-date-input");
+const filterDateEl = document.getElementById("pm-filter-date");
+if (dateInputEl) dateInputEl.value = todayIso;
+if (filterDateEl) filterDateEl.value = todayIso;
 
-const datePicker = document.getElementById("pm-date-picker");
-datePicker.value = selectedDate;
-
-async function refreshPmPlan() {
-    const loaded = await loadAllAppData();
-    toolsData = loaded.tools;
-    breakdownsData = loaded.breakdowns;
-    renderPmPlanPage();
-}
-
-function setMonthView(y, m) {
-    const dt = new Date(y, m, 1);
-    viewYear = dt.getFullYear();
-    viewMonth = dt.getMonth();
-    const pfx = getYearMonthPrefix(viewYear, viewMonth);
-    if (!selectedDate.startsWith(pfx)) {
-        selectedDate = `${pfx}-01`;
-        datePicker.value = selectedDate;
+async function loadPmData() {
+    const res = await loadAllAppData();
+    toolsList = res.tools || [];
+    breakdownsList = res.breakdowns || [];
+    if (typeof syncToolsPhotosToBackup === "function") {
+        syncToolsPhotosToBackup(toolsList);
     }
-    renderPmPlanPage();
+    renderPmRows();
 }
 
-function selectDay(iso) {
-    selectedDate = iso;
-    datePicker.value = iso;
-    const [y, m] = iso.split("-").map(Number);
-    viewYear = y;
-    viewMonth = m - 1;
-    renderPmPlanPage();
+function renderPmRows() {
+    const tbody = document.getElementById("pm-plan-tbody");
+    if (!tbody) return;
+
+    const q = (document.getElementById("pm-search-input")?.value || "").trim().toLowerCase();
+    let rows = [...toolsList];
+
+    if (!showAllDates && selectedFilterDate) {
+        rows = rows.filter((t) => t.scheduledDate === selectedFilterDate);
+    }
+
+    if (q) {
+        rows = rows.filter((t) =>
+            [t.toolCode, t.exchangeMould, t.status, t.remarks, t.postpondMould, t.scheduledDate]
+                .join(" ")
+                .toLowerCase()
+                .includes(q)
+        );
+    }
+
+    rows.sort((a, b) => (a.scheduledDate || "").localeCompare(b.scheduledDate || ""));
+
+    if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-center font-mono text-xs text-stone-400">No PM plan rows found.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = rows
+        .map((t, idx) => {
+            const pCount = (t.beforePhoto ? 1 : 0) + (t.afterPhoto ? 1 : 0);
+            return `
+                <tr class="hover:bg-stone-900/60 align-top">
+                    <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs text-amber-300 whitespace-nowrap">${t.scheduledDate || "—"}</td>
+                    <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs">${idx + 1}</td>
+                    <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono font-bold text-white">${t.toolCode || "—"}</td>
+                    <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs text-sky-300">${t.exchangeMould || "—"}</td>
+                    <td class="py-2.5 px-3 border-r border-stone-800/80">${getStatusBadge(t.status || "Scheduled")}</td>
+                    <td class="py-2.5 px-3 border-r border-stone-800/80 font-mono text-xs">
+                        <button type="button" onclick="openPmPlanModal('${t.id}')" class="px-2 py-1 rounded bg-stone-800 hover:bg-stone-700 text-sky-300">
+                            ${pCount ? `Photo (${pCount})` : "+ Photo"}
+                        </button>
+                    </td>
+                    <td class="py-2.5 px-3 border-r border-stone-800/80 text-xs text-stone-200">${t.remarks || "—"}</td>
+                    <td class="py-2.5 px-3 font-mono text-xs text-rose-300">${t.postpondMould || "—"}</td>
+                </tr>
+            `;
+        })
+        .join("");
 }
 
-async function updateExchange(id, val) {
-    const item = toolsData.find((t) => t.id === id);
+window.openPmPlanModal = function (id) {
+    const item = toolsList.find((t) => t.id === id);
     if (!item) return;
-    item.actualMold = String(val || "").trim();
-    await putToStore(STORE_TOOLS, item);
-    writeLocalStorageMirror(toolsData, breakdownsData);
-    showToast("Exchange saved");
-    renderPmPlanPage();
+    editingId = id;
+    tempBefore = item.beforePhoto || "";
+    tempAfter = item.afterPhoto || "";
+
+    document.getElementById("pm-modal-title").textContent = `${item.toolCode} (${item.scheduledDate || ""})`;
+    document.getElementById("pm-modal-exchange").value = item.exchangeMould || "";
+    document.getElementById("pm-modal-postpond").value = item.postpondMould || "";
+    document.getElementById("pm-modal-remark").value = item.remarks || "";
+
+    const bImg = document.getElementById("pm-before-preview");
+    const bPh = document.getElementById("pm-before-placeholder");
+    if (tempBefore) {
+        bImg.src = tempBefore;
+        bImg.classList.remove("hidden");
+        bPh.classList.add("hidden");
+    } else {
+        bImg.classList.add("hidden");
+        bPh.classList.remove("hidden");
+    }
+
+    const aImg = document.getElementById("pm-after-preview");
+    const aPh = document.getElementById("pm-after-placeholder");
+    if (tempAfter) {
+        aImg.src = tempAfter;
+        aImg.classList.remove("hidden");
+        aPh.classList.add("hidden");
+    } else {
+        aImg.classList.add("hidden");
+        aPh.classList.remove("hidden");
+    }
+
+    const modal = document.getElementById("pm-photo-modal");
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+};
+
+function closePmPlanModal() {
+    editingId = null;
+    const modal = document.getElementById("pm-photo-modal");
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
 }
 
-async function toggleCompletePm(id) {
-    const item = toolsData.find((t) => t.id === id);
-    if (!item) return;
-    item.status = item.status === "PM Completed" ? "Scheduled" : "PM Completed";
-    await putToStore(STORE_TOOLS, item);
-    writeLocalStorageMirror(toolsData, breakdownsData);
-    showToast(`${item.toolCode}: ${item.status}`);
-    renderPmPlanPage();
-}
+async function savePmPlanModal(markDone) {
+    if (!editingId) return;
+    const idx = toolsList.findIndex((t) => t.id === editingId);
+    if (idx === -1) return;
 
-async function editPmItem(id) {
-    const item = toolsData.find((t) => t.id === id);
-    if (!item) return;
-    const nextMold = prompt("Mold Name:", item.moldName);
-    if (nextMold === null) return;
-    const nextExchange = prompt("Exchange Mold:", item.actualMold || "");
-    if (nextExchange === null) return;
-    const nextDate = prompt("Schedule Date (YYYY-MM-DD):", item.scheduledDate);
-    if (nextDate === null) return;
-
-    item.moldName = nextMold.trim() || item.moldName;
-    item.actualMold = nextExchange.trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(nextDate.trim())) item.scheduledDate = nextDate.trim();
-    await putToStore(STORE_TOOLS, item);
-    writeLocalStorageMirror(toolsData, breakdownsData);
-    showToast("Updated");
-    renderPmPlanPage();
-}
-
-async function deletePmItem(id) {
-    const item = toolsData.find((t) => t.id === id);
-    if (!item) return;
-    if (!confirm(`Delete ${item.toolCode}?`)) return;
-    toolsData = toolsData.filter((t) => t.id !== id);
-    await deleteByIdFromStore(STORE_TOOLS, id);
-    writeLocalStorageMirror(toolsData, breakdownsData);
-    showToast("Deleted");
-    renderPmPlanPage();
-}
-
-function attachPhotoToPm(id) {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const item = toolsData.find((t) => t.id === id);
-        if (!item) return;
-        item.afterPhoto = await compressImageFile(file);
-        await putToStore(STORE_TOOLS, item);
-        writeLocalStorageMirror(toolsData, breakdownsData);
-        showToast("Photo attached");
-        renderPmPlanPage();
+    const remarkVal = document.getElementById("pm-modal-remark").value.trim();
+    const updated = {
+        ...toolsList[idx],
+        beforePhoto: tempBefore,
+        afterPhoto: tempAfter,
+        exchangeMould: document.getElementById("pm-modal-exchange").value.trim().toUpperCase(),
+        postpondMould: document.getElementById("pm-modal-postpond").value.trim().toUpperCase(),
+        remarks: remarkVal,
+        status: markDone ? "PM Completed" : toolsList[idx].status
     };
-    input.click();
-}
 
-function renderPmPlanPage() {
-    document.getElementById("pm-cal-heading").textContent = `${MONTH_NAMES[viewMonth]} ${viewYear}`;
-    document.getElementById("daily-pm-title").textContent = `Daily PM Plan — ${selectedDate}`;
-
-    document.getElementById("pm-month-pills").innerHTML = MONTH_SHORT.map((sm, idx) => {
-        const cnt = toolsData.filter((t) => t.scheduledDate.startsWith(getYearMonthPrefix(viewYear, idx))).length;
-        return `<button type="button" onclick="setMonthView(${viewYear}, ${idx})" class="shrink-0 px-2.5 py-1 rounded-lg border ${idx === viewMonth ? "border-amber-400 bg-amber-400/15 text-amber-300 font-bold" : "border-stone-800 bg-[#0b0d11] text-stone-400"}">${sm} (${cnt})</button>`;
-    }).join("");
-
-    const firstDay = new Date(viewYear, viewMonth, 1).getDay();
-    const daysCount = new Date(viewYear, viewMonth + 1, 0).getDate();
-    const cells = [];
-    for (let i = 0; i < firstDay; i++) cells.push(`<div class="h-14 rounded-xl bg-[#0a0c10]/50"></div>`);
-    for (let d = 1; d <= daysCount; d++) {
-        const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        const list = toolsData.filter((t) => t.scheduledDate === iso);
-        cells.push(`
-            <button type="button" onclick="selectDay('${iso}')" class="h-14 rounded-xl border p-1.5 text-left flex flex-col justify-between font-mono text-xs ${iso === selectedDate ? "border-amber-400 bg-[#171c26] text-amber-300 font-bold" : "border-stone-800 bg-[#0b0d11] text-stone-300"}">
-                <span>${d}</span>
-                <span class="text-[10px] truncate text-amber-400">${list.map((x) => x.toolCode).join(", ") || "—"}</span>
-            </button>
-        `);
+    if (typeof savePmPhotoToBackup === "function") {
+        if (tempBefore) {
+            savePmPhotoToBackup({
+                toolCode: updated.toolCode,
+                date: updated.scheduledDate,
+                stage: "BEFORE PM",
+                dataUrl: tempBefore,
+                remarks: remarkVal
+            });
+        }
+        if (tempAfter) {
+            savePmPhotoToBackup({
+                toolCode: updated.toolCode,
+                date: updated.scheduledDate,
+                stage: "AFTER PM",
+                dataUrl: tempAfter,
+                remarks: remarkVal
+            });
+        }
     }
-    document.getElementById("pm-days-grid").innerHTML = cells.join("");
 
-    const dailyList = toolsData.filter((t) => t.scheduledDate === selectedDate);
-    document.getElementById("daily-pm-cards").innerHTML = dailyList.length
-        ? dailyList.map((t) => `
-            <div class="rounded-2xl border border-stone-800 bg-[#11151d] p-4 space-y-2">
-                <div class="flex items-center justify-between">
-                    <span class="font-mono text-xs font-bold text-amber-400">${t.toolCode}</span>
-                    ${getStatusBadge(t.status)}
-                </div>
-                <div class="font-bold text-sm">${t.moldName}</div>
-                <div class="text-xs font-mono text-stone-400">${t.machineNo} • ${t.scheduledDate}</div>
-                ${t.actualMold ? `<div class="text-xs font-mono text-emerald-300">Exchange: ${t.actualMold}</div>` : ""}
-                <div class="flex gap-2 pt-2 font-mono text-xs">
-                    <button type="button" onclick="toggleCompletePm('${t.id}')" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">Done</button>
-                    <button type="button" onclick="editPmItem('${t.id}')" class="px-2.5 py-1 rounded-lg bg-stone-800 text-sky-300">Edit</button>
-                    <button type="button" onclick="deletePmItem('${t.id}')" class="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300">Delete</button>
-                </div>
-            </div>
-        `).join("")
-        : `<div class="col-span-full rounded-xl border border-dashed border-stone-800 p-4 text-xs font-mono text-stone-500 text-center">No Daily PM on ${selectedDate}</div>`;
-
-    const prefix = getYearMonthPrefix(viewYear, viewMonth);
-    const rows = (showAllMonths ? [...toolsData] : toolsData.filter((t) => t.scheduledDate.startsWith(prefix)))
-        .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
-    document.getElementById("month-pm-table-title").textContent = showAllMonths ? `All 12 Months PM Plan (${rows.length})` : `Month PM Plan — ${MONTH_NAMES[viewMonth]} (${rows.length})`;
-
-    document.getElementById("pm-plan-tbody").innerHTML = rows.length
-        ? rows.map((t) => `
-            <tr class="hover:bg-stone-900/50">
-                <td class="py-2.5 px-3.5 font-mono text-xs">
-                    <div class="font-bold text-amber-400">${t.toolCode} • ${t.scheduledDate}</div>
-                    <div class="text-stone-200">${t.moldName} (${t.machineNo})</div>
-                </td>
-                <td class="py-2.5 px-3.5">
-                    <input type="text" value="${escapeHtmlAttr(t.actualMold || "")}" placeholder="Exchange..." onchange="updateExchange('${t.id}', this.value)" class="w-32 bg-[#0b0d11] border border-emerald-500/35 rounded-lg px-2 py-1 text-xs font-mono text-emerald-200" />
-                </td>
-                <td class="py-2.5 px-3.5 whitespace-nowrap">
-                    <button type="button" onclick="toggleCompletePm('${t.id}')">${getStatusBadge(t.status)}</button>
-                </td>
-                <td class="py-2.5 px-3.5 whitespace-nowrap font-mono text-xs">
-                    <button type="button" onclick="attachPhotoToPm('${t.id}')" class="underline text-amber-300">${t.afterPhoto ? "Photo Saved" : "Add Photo"}</button>
-                </td>
-                <td class="py-2.5 px-3.5 whitespace-nowrap font-mono text-xs">
-                    <button type="button" onclick="editPmItem('${t.id}')" class="underline text-sky-300 mr-2">Edit</button>
-                    <button type="button" onclick="deletePmItem('${t.id}')" class="underline text-rose-300">Delete</button>
-                </td>
-            </tr>
-        `).join("")
-        : `<tr><td colspan="5" class="py-4 text-center text-xs font-mono text-stone-500">No PM plan rows</td></tr>`;
+    toolsList[idx] = updated;
+    await putToStore(STORE_TOOLS, updated);
+    writeLocalStorageMirror(toolsList, breakdownsList);
+    closePmPlanModal();
+    renderPmRows();
+    showToast(markDone ? "PM marked completed" : "PM saved");
 }
 
-document.getElementById("toggle-add-pm-btn").addEventListener("click", () => {
-    document.getElementById("new-pm-date").value = selectedDate;
-    document.getElementById("add-pm-box").classList.toggle("hidden");
+document.getElementById("toggle-add-pm-btn")?.addEventListener("click", () => {
+    document.getElementById("add-pm-section")?.classList.toggle("hidden");
 });
-document.getElementById("add-pm-form").addEventListener("submit", async (e) => {
+
+document.getElementById("add-pm-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const fd = new FormData(e.target);
-    const sched = fd.get("scheduledDate") || selectedDate;
-    const item = {
-        id: `pm_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-        toolCode: String(fd.get("toolCode")).trim().toUpperCase(),
-        moldName: String(fd.get("moldName")).trim(),
-        actualMold: "",
-        machineNo: String(fd.get("machineNo")).trim().toUpperCase(),
-        scheduledDate: sched,
+    const rec = {
+        id: `pm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        scheduledDate: document.getElementById("pm-date-input").value || todayIso,
+        toolCode: document.getElementById("pm-mould-input").value.trim().toUpperCase(),
+        exchangeMould: document.getElementById("pm-exchange-input").value.trim().toUpperCase(),
+        postpondMould: document.getElementById("pm-postpond-input").value.trim().toUpperCase(),
+        remarks: document.getElementById("pm-remark-input").value.trim(),
         status: "Scheduled",
-        afterPhoto: null
+        beforePhoto: "",
+        afterPhoto: ""
     };
-    toolsData.push(item);
-    await putToStore(STORE_TOOLS, item);
-    writeLocalStorageMirror(toolsData, breakdownsData);
+    toolsList.push(rec);
+    await putToStore(STORE_TOOLS, rec);
+    writeLocalStorageMirror(toolsList, breakdownsList);
     e.target.reset();
-    document.getElementById("add-pm-box").classList.add("hidden");
-    selectDay(sched);
-    showToast("PM added");
+    if (dateInputEl) dateInputEl.value = todayIso;
+    renderPmRows();
+    showToast("Mould added to PM plan");
 });
-datePicker.addEventListener("change", (e) => selectDay(e.target.value || todayStr));
-document.getElementById("pm-prev-m").addEventListener("click", () => setMonthView(viewYear, viewMonth - 1));
-document.getElementById("pm-next-m").addEventListener("click", () => setMonthView(viewYear, viewMonth + 1));
-document.getElementById("btn-running-month").addEventListener("click", () => { showAllMonths = false; renderPmPlanPage(); });
-document.getElementById("btn-all-12-months").addEventListener("click", () => { showAllMonths = true; renderPmPlanPage(); });
 
-refreshPmPlan();
+document.getElementById("pm-search-input")?.addEventListener("input", renderPmRows);
+document.getElementById("pm-filter-date")?.addEventListener("change", (e) => {
+    selectedFilterDate = e.target.value;
+    showAllDates = !selectedFilterDate;
+    renderPmRows();
+});
+document.getElementById("pm-all-dates-btn")?.addEventListener("click", () => {
+    showAllDates = true;
+    if (filterDateEl) filterDateEl.value = "";
+    renderPmRows();
+});
+
+document.getElementById("pm-before-input")?.addEventListener("change", async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    tempBefore = await compressImageFile(f);
+    const img = document.getElementById("pm-before-preview");
+    img.src = tempBefore;
+    img.classList.remove("hidden");
+    document.getElementById("pm-before-placeholder")?.classList.add("hidden");
+});
+
+document.getElementById("pm-after-input")?.addEventListener("change", async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    tempAfter = await compressImageFile(f);
+    const img = document.getElementById("pm-after-preview");
+    img.src = tempAfter;
+    img.classList.remove("hidden");
+    document.getElementById("pm-after-placeholder")?.classList.add("hidden");
+});
+
+document.getElementById("close-pm-modal-btn")?.addEventListener("click", closePmPlanModal);
+document.getElementById("pm-modal-save-btn")?.addEventListener("click", () => savePmPlanModal(false));
+document.getElementById("pm-modal-complete-btn")?.addEventListener("click", () => savePmPlanModal(true));
+
+loadPmData();
